@@ -52,7 +52,7 @@ class MainActivity:ComponentActivity() {
  private fun allowed():Boolean {val p=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION);return p.all{ContextCompat.checkSelfPermission(this,it)==PackageManager.PERMISSION_GRANTED}}
  private fun requestScan(){if(!allowed()){val p=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION);requestPermissions(p,701);statusUpdate?.invoke(false,"Allow Bluetooth permission, then tap Scan again");return};start()}
  @Deprecated("Android permission callback")
- override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==701)statusUpdate?.invoke(false,if(grantResults.isNotEmpty()&&grantResults.all{it==PackageManager.PERMISSION_GRANTED})"Permission granted — tap Scan to begin" else "Bluetooth permission is required")}
+ override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==701)statusUpdate?.invoke(false,if(grantResults.isNotEmpty()&&grantResults.all{it==PackageManager.PERMISSION_GRANTED})"Permission granted — tap Scan to begin" else "Bluetooth permission is required")}
  private fun start(){if(active)return;try{
   val adapter=(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
   if(adapter==null){statusUpdate?.invoke(false,"Bluetooth is not supported");return};if(!adapter.isEnabled){statusUpdate?.invoke(false,"Turn on Bluetooth, then try again");return}
@@ -65,7 +65,7 @@ class MainActivity:ComponentActivity() {
  private fun add(r:ScanResult){val rec=r.scanRecord;val addr=try{r.device.address?:"Unavailable"}catch(_:SecurityException){"Hidden by Android"};val name=rec?.deviceName?.takeIf{it.isNotBlank()}?:try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}?:"Unnamed device"
   val services=rec?.serviceUuids?.map{it.uuid.toString()}?:emptyList()
   val m=rec?.manufacturerSpecificData?.let{s->(0 until s.size()).joinToString(" · "){i->"ID "+s.keyAt(i).toString(16)+": "+s.valueAt(i).joinToString(""){"%02X".format(it)}}}.orEmpty()
-  val sd=rec?.serviceData?.entries?.joinToString(" · "){it.key.uuid+": "+it.value.joinToString(""){"%02X".format(it)}}.orEmpty()
+  val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> entry.key.uuid+": "+entry.value.joinToString(""){byte -> "%02X".format(byte.toInt() and 0xFF)}}.orEmpty()
   val raw=rec?.bytes?.take(64)?.joinToString(" "){"%02X".format(it)}.orEmpty();val now=System.currentTimeMillis()
   synchronized(found){val old=found[addr];found[addr]=Device(addr,name,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20));val list=found.values.sortedByDescending{it.rssi};runOnUiThread{update?.invoke(list)}}
  }

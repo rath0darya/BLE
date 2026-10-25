@@ -48,7 +48,7 @@ class MainActivity:ComponentActivity() {
   var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")}
   update={devices=it};statusUpdate={a,s->scanning=a;status=s}
   AppTheme{Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)})}
- }}
+ }}}
  private fun allowed():Boolean {val p=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION);return p.all{ContextCompat.checkSelfPermission(this,it)==PackageManager.PERMISSION_GRANTED}}
  private fun requestScan(){if(!allowed()){val p=if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION);requestPermissions(p,701);statusUpdate?.invoke(false,"Allow Bluetooth permission, then tap Scan again");return};start()}
  @Deprecated("Android permission callback")

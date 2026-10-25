@@ -121,7 +121,7 @@ class MainActivity:ComponentActivity() {
  Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","\${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
  Text("BLE does not measure exact distance. Signal strength is only a rough clue to proximity.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close details")}
-}}
+}}}
 @Composable private fun Detail(label:String,value:String){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.55f)).padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(label,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(value,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.Medium)}}
 private fun date(t:Long)=SimpleDateFormat("dd MMM yyyy, HH:mm:ss",Locale.getDefault()).format(Date(t))
 private fun ago(t:Long):String{val s=((System.currentTimeMillis()-t).coerceAtLeast(0L))/1000;return when{s<2->"NOW";s<60->"\${s}s AGO";else->"\${s/60}m AGO"}}

@@ -132,9 +132,10 @@ private fun ago(t:Long):String{val s=((System.currentTimeMillis()-t).coerceAtLea
 
 @Composable private fun SignalHistory(values:List<Int>,tint:Color){
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+  val gridColor=MaterialTheme.colorScheme.onSurface.copy(alpha=.12f)
   Canvas(Modifier.fillMaxWidth().height(76.dp)){
    val min=-100f;val max=-30f;val points=values.mapIndexed{index,value->androidx.compose.ui.geometry.Offset(if(values.size<=1)size.width else index.toFloat()/(values.size-1)*size.width,size.height-((value-min)/(max-min)).coerceIn(0f,1f)*size.height)}
-   for(i in 1..3){val y=size.height*i/4;drawLine(MaterialTheme.colorScheme.onSurface.copy(alpha=.12f),androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),1.dp.toPx())}
+   for(i in 1..3){val y=size.height*i/4;drawLine(gridColor,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),1.dp.toPx())}
    if(points.size>1){val path=Path().apply{moveTo(points.first().x,points.first().y);points.drop(1).forEach{lineTo(it.x,it.y)}};drawPath(path,tint,style=Stroke(width=3.dp.toPx()))}
    points.forEach{drawCircle(tint,3.dp.toPx(),it)}
   }

@@ -21,7 +21,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Build APKs
-        run: gradle --no-daemon assembleDebug assembleRelease
+        run: gradle --no-daemon --stacktrace assembleDebug assembleRelease
       - name: Prepare downloadable APKs
         run: |
           mkdir -p downloads

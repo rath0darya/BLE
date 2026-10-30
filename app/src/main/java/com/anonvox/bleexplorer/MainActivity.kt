@@ -68,7 +68,7 @@ class MainActivity:ComponentActivity() {
  private fun add(r:ScanResult){val rec=r.scanRecord;val addr=try{r.device.address?:"Unavailable"}catch(_:SecurityException){"Hidden by Android"};val name=rec?.deviceName?.takeIf{it.isNotBlank()}?:try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}?:"Unnamed device"
   val services=rec?.serviceUuids?.map{it.uuid.toString()}?:emptyList()
   val m=rec?.manufacturerSpecificData?.let{s->(0 until s.size()).joinToString(" · "){i->"ID "+s.keyAt(i).toString(16)+": "+s.valueAt(i).joinToString(""){"%02X".format(it)}}}.orEmpty()
-  val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> entry.key.uuid+": "+entry.value.joinToString(""){byte -> "%02X".format(byte.toInt() and 0xFF)}}.orEmpty()
+  val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> entry.key.uuid+": "+entry.value.joinToString(""){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}}.orEmpty()
   val raw=rec?.bytes?.take(64)?.joinToString(" "){"%02X".format(it)}.orEmpty();val now=System.currentTimeMillis()
   synchronized(found){val old=found[addr];found[addr]=Device(addr,name,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20));val list=found.values.sortedByDescending{it.rssi};runOnUiThread{update?.invoke(list)}}
  }
@@ -134,7 +134,7 @@ private fun ago(t:Long):String{val s=((System.currentTimeMillis()-t).coerceAtLea
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(12.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
   val gridColor=MaterialTheme.colorScheme.onSurface.copy(alpha=.12f)
   Canvas(Modifier.fillMaxWidth().height(76.dp)){
-   val min=-100f;val max=-30f;val points=values.mapIndexed{index,value->androidx.compose.ui.geometry.Offset(if(values.size<=1)size.width else index.toFloat()/(values.size-1)*size.width,size.height-((value-min)/(max-min)).coerceIn(0f,1f)*size.height)}
+   val min=-100f;val max=-30f;val canvasWidth=this.size.width;val canvasHeight=this.size.height;val points=values.mapIndexed{index,value->androidx.compose.ui.geometry.Offset(if(values.size<=1)canvasWidth else index.toFloat()/(values.size-1)*canvasWidth,canvasHeight-((value.toFloat()-min)/(max-min)).coerceIn(0f,1f)*canvasHeight)}
    for(i in 1..3){val y=size.height*i/4;drawLine(gridColor,androidx.compose.ui.geometry.Offset(0f,y),androidx.compose.ui.geometry.Offset(size.width,y),1.dp.toPx())}
    if(points.size>1){val path=Path().apply{moveTo(points.first().x,points.first().y);points.drop(1).forEach{lineTo(it.x,it.y)}};drawPath(path,tint,style=Stroke(width=3.dp.toPx()))}
    points.forEach{drawCircle(tint,3.dp.toPx(),it)}

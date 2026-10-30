@@ -67,9 +67,9 @@ class MainActivity:ComponentActivity() {
  }catch(_:SecurityException){statusUpdate?.invoke(false,"Bluetooth permission was denied")}catch(_:Exception){statusUpdate?.invoke(false,"Could not start scanning")}}
  private fun add(r:ScanResult){val rec=r.scanRecord;val addr=try{r.device.address?:"Unavailable"}catch(_:SecurityException){"Hidden by Android"};val name=rec?.deviceName?.takeIf{it.isNotBlank()}?:try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}?:"Unnamed device"
   val services=rec?.serviceUuids?.map{it.uuid.toString()}?:emptyList()
-  val m=rec?.manufacturerSpecificData?.let{s->(0 until s.size()).joinToString(" · "){i->"ID "+s.keyAt(i).toString(16)+": "+s.valueAt(i).joinToString(""){"%02X".format(it)}}}.orEmpty()
+  val m=rec?.manufacturerSpecificData?.let{s->(0 until s.size()).joinToString(" · "){i->"ID "+s.keyAt(i).toString(16)+": "+s.valueAt(i).joinToString(""){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}}}.orEmpty()
   val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> entry.key.uuid+": "+entry.value.joinToString(""){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}}.orEmpty()
-  val raw=rec?.bytes?.take(64)?.joinToString(" "){"%02X".format(it)}.orEmpty();val now=System.currentTimeMillis()
+  val raw=rec?.bytes?.take(64)?.joinToString(" "){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}.orEmpty();val now=System.currentTimeMillis()
   synchronized(found){val old=found[addr];found[addr]=Device(addr,name,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20));val list=found.values.sortedByDescending{it.rssi};runOnUiThread{update?.invoke(list)}}
  }
  private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}

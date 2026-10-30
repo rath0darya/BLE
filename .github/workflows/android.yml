@@ -26,7 +26,7 @@ jobs:
         run: |
           mkdir -p downloads
           cp app/build/outputs/apk/debug/app-debug.apk downloads/BLE-Explorer-debug.apk
-          cp app/build/outputs/apk/release/app-release-unsigned.apk downloads/BLE-Explorer-release-unsigned.apk
+          cp app/build/outputs/apk/release/app-release.apk downloads/BLE-Explorer.apk
       - uses: actions/upload-artifact@v4
         with:
           name: BLE-Explorer-APKs
@@ -38,5 +38,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view latest >/dev/null 2>&1 || gh release create latest --title "BLE Explorer latest build" --notes "Automatically built from main. Debug APK is signed for direct installation; release APK is unsigned unless a signing key is configured."
-          gh release upload latest downloads/BLE-Explorer-debug.apk downloads/BLE-Explorer-release-unsigned.apk --clobber
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "BLE Explorer latest build" --notes "Automatically built from main. Both APKs are signed. Release APK uses the repository build configuration; no GitHub secrets are required."
+          gh release upload latest downloads/BLE-Explorer-debug.apk downloads/BLE-Explorer.apk --clobber

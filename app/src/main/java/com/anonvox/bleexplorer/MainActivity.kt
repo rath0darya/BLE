@@ -82,18 +82,23 @@ class MainActivity:ComponentActivity() {
 }
 private fun classifyDevice(name:String,services:List<String>,manufacturer:String,serviceData:String):String {
  val n=(name+" "+manufacturer+" "+serviceData).lowercase(Locale.ROOT)
- val uuids=services.map{it.lowercase(Locale.ROOT)}
- val hasBatteryService=uuids.any{it.endsWith("180f")}
+ val u=services.map{it.lowercase(Locale.ROOT).substringAfterLast("-")}
+ fun has(vararg ids:String)=u.any{v->ids.any{v.endsWith(it)}}
+ fun named(vararg words:String)=words.any{n.contains(it)}
  return when {
-  listOf("ev battery","ev-battery","traction battery","bms","battery pack","lifepo","lithium battery","e-scooter","electric scooter","electric vehicle","e-bike battery","ebike battery","inverter battery").any{n.contains(it)} -> "EV Batteries"
-  hasBatteryService || listOf("battery","batt pack","power bank","ups battery").any{n.contains(it)} -> "Batteries"
-  listOf("iphone","ipad","android phone","samsung galaxy","pixel phone","oneplus","xiaomi","redmi","realme","vivo ","oppo ","motorola","nothing phone","huawei phone").any{n.contains(it)} -> "Phones"
-  listOf("airpods","earbuds","buds","headphone","headset","speaker","soundbar","boAt","jbl","sony wf","galaxy buds","neckband").any{n.contains(it)} || uuids.any{it.endsWith("110b")||it.endsWith("110d")} -> "Audio"
-  listOf("watch","band","fitbit","garmin","wearable","heart rate","fitness tracker").any{n.contains(it)} || uuids.any{it.endsWith("180d")} -> "Wearables"
-  listOf("airtag","tile","smarttag","tracker","find my","beacon","tag").any{n.contains(it)} -> "Trackers"
-  listOf("bulb","light","plug","switch","thermostat","sensor","homekit","smart home").any{n.contains(it)} -> "Smart Home"
-  listOf("obd","car","vehicle","motorcycle","scooter","bike","tyre","tire pressure","tpms").any{n.contains(it)} -> "Automotive"
-  else -> "Other"
+  named("ev battery","ev-battery","traction battery","battery management system","battery pack","bms","lifepo","li-fe-po","lithium battery","e-scooter battery","electric scooter battery","electric vehicle battery","e-bike battery","ebike battery","inverter battery","bms_","bms-","jbd","dal y bms","jk-bms","seplos","ant bms","pace bms","scooter bms") -> "EV Batteries"
+  named("airpods","earbuds","ear bud","headphone","headset","neckband","soundbar","speaker","galaxy buds","pixel buds","wf-","wh-1000","boAt","boat ","jbl","bose","sony audio","beats ") || has("110b","110d","110e","110f","111e","111f","1124","1130","1131") -> "Audio"
+  named("iphone","ipad","android phone","samsung galaxy","galaxy s","galaxy note","pixel phone","oneplus","xiaomi","redmi","realme","vivo ","oppo ","motorola","nothing phone","huawei phone","honor phone") -> "Phones"
+  named("apple watch","galaxy watch","pixel watch","fitbit","garmin","smartwatch","smart watch","fitness band","mi band","miband","fitness tracker","heart rate","wearable","watch ") || has("180d","1816","1818","1819","1822","183a") -> "Wearables"
+  named("airtag","tile","smarttag","tracker","find my","ibeacon","eddystone","beacon","chipolo","pebblebee") || has("feaa","feab") -> "Trackers"
+  named("obd","tpms","tire pressure","tyre pressure","vehicle","motorcycle","car diagnostic","elm327","vlinker","scooter","ebike","e-bike") -> "Automotive"
+  named("smart bulb","smart light","smart plug","smart switch","thermostat","homekit","smart home","zigbee","matter","hue","lifx","tuya","sonoff","aqara") || has("fd6f","fcf1") -> "Smart Home"
+  named("keyboard","mouse","trackpad","gamepad","controller","joystick","hid") || has("1812") -> "Input Devices"
+  named("laptop","notebook","desktop","macbook","thinkpad","surface pro","chromebook","windows pc") -> "Computers"
+  named("printer","label maker","thermal printer","barcode scanner") -> "Printers"
+  named("glucose","glucometer","pulse oximeter","blood pressure","medical","hearing aid","insulin") || has("1808","1810","181a","1821") -> "Medical"
+  named("battery","batt ","batt_","batt-","power bank","ups battery","lithium pack","lifepo4","li-ion","li ion","bms") -> "Batteries"
+  else -> "Unknown"
  }
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFF7DD3FC),secondary=Color(0xFFA5B4FC),background=Color(0xFF0A1020),surface=Color(0xFF121B2D),surfaceVariant=Color(0xFF202B40),onSurface=Color(0xFFF1F5F9),onSurfaceVariant=Color(0xFFB8C5D8))else lightColorScheme(primary=Color(0xFF0369A1),secondary=Color(0xFF4F46E5),background=Color(0xFFF4F7FC),surface=Color.White,surfaceVariant=Color(0xFFE8EEF7),onSurface=Color(0xFF102033),onSurfaceVariant=Color(0xFF52647B)),content=content)}

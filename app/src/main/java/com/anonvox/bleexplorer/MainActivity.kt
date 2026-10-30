@@ -82,8 +82,8 @@ class MainActivity:ComponentActivity() {
 }
 private fun classifyDevice(name:String,services:List<String>,manufacturer:String,serviceData:String):String {
  val n=(name+" "+manufacturer+" "+serviceData).lowercase(Locale.ROOT)
- val u=services.map{it.lowercase(Locale.ROOT).substringAfterLast("-")}
- fun has(vararg ids:String)=u.any{v->ids.any{v.endsWith(it)}}
+ val u=services.map{raw->val compact=raw.replace("-","").lowercase(Locale.ROOT);if(compact.length==32)compact.substring(4,8) else compact}
+ fun has(vararg ids:String)=u.any{v->ids.any{v==it}}
  fun named(vararg words:String)=words.any{n.contains(it)}
  return when {
   named("ev battery","ev-battery","traction battery","battery management system","battery pack","bms","lifepo","li-fe-po","lithium battery","e-scooter battery","electric scooter battery","electric vehicle battery","e-bike battery","ebike battery","inverter battery","bms_","bms-","jbd","dal y bms","jk-bms","seplos","ant bms","pace bms","scooter bms") -> "EV Batteries"

@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -180,7 +181,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
   item{Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.Info,null,modifier=Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant);Text("Each discovered device is labelled with its detected type. BLE broadcasts vary by device; some products remain invisible unless they advertise.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
  }}
  selected?.let{device->DeviceSheet(device,{onPair(device)}){selected=null}}
- if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Scan settings")},text={Text("BLE asks for Nearby devices and Location permission before scanning. On older Android versions, Location services must also be switched on. Scans start only when you tap the button and stop after 30 seconds. No pairing or background scanning.")},confirmButton={TextButton(onClick={settings=false}){Text("Got it")}})
+ if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Scan settings")},text={Text("BLE asks for Nearby devices and Location permission before scanning. On older Android versions, Location services must also be switched on. Scans start only when you tap the button and stop after 30 seconds. Pairing is initiated only when you choose Pair securely in a device's details.")},confirmButton={TextButton(onClick={settings=false}){Text("Got it")}})
 }
 @Composable private fun Metric(label:String,value:String,icon:ImageVector,modifier:Modifier=Modifier){Column(modifier.clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha=.72f)).padding(horizontal=9.dp,vertical=11.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Icon(icon,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(17.dp));Text(value,fontWeight=FontWeight.Bold,fontSize=16.sp,maxLines=1,overflow=TextOverflow.Ellipsis);Text(label,fontSize=9.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)}}
 @Composable private fun DeviceCard(d:Device,compact:Boolean,click:()->Unit){Surface(Modifier.fillMaxWidth().clickable(onClick=click),shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=3.dp,shadowElevation=if(isSystemInDarkTheme())2.dp else 7.dp,border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outline.copy(alpha=if(isSystemInDarkTheme()).28f else .18f))){
@@ -201,8 +202,15 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary); SignalHistory(d.history,d.tint)
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Detected category",d.category);Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
- Text("Secure pairing",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Text("Uses Android Bluetooth pairing. BLE devices negotiate security through SMP; LE Secure Connections with ECDH P-256 is used when supported by both devices. The device and Android control the negotiated security level.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ Text("PAIRING & SUPPORTED FORMATS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+ Detail("Detected connection format","Bluetooth Low Energy (BLE) — confirmed by this scan")
+ Detail("BLE pairing protocol","Security Manager Protocol (SMP), if the device supports pairing")
+ Detail("Pairing methods","Just Works · Passkey Entry · Numeric Comparison · Out-of-Band (OOB). The method is negotiated with the device.")
+ Detail("LE Secure Connections","Unknown — support is not exposed in ordinary BLE advertisements. When supported by both sides, it uses ECDH P-256.")
+ Detail("Classic Bluetooth (BR/EDR)","Not detected by this BLE scan. Dual-mode support is unknown.")
+ Detail("Bonding support","Unknown until Android attempts pairing and the device responds.")
+ Detail("Negotiated security level","Available only after the pairing exchange; this scan cannot determine it.")
+ Text("Only the device and Android can confirm the actual pairing methods and security level. Some BLE advertisers are broadcast-only and do not accept pairing.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  Text("BLE does not measure exact distance. Signal strength is only a rough clue to proximity.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close details")}
 }}}

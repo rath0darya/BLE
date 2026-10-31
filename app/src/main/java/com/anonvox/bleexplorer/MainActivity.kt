@@ -67,12 +67,25 @@ class MainActivity:ComponentActivity() {
   scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)
   active=true;statusUpdate?.invoke(true,"Scanning nearby devices…");handler.removeCallbacks(timeout);handler.postDelayed(timeout,30000)
  }catch(_:SecurityException){statusUpdate?.invoke(false,"Bluetooth permission was denied")}catch(_:Exception){statusUpdate?.invoke(false,"Could not start scanning")}}
- private fun add(r:ScanResult){val rec=r.scanRecord;val addr=try{r.device.address?:"Unavailable"}catch(_:SecurityException){"Hidden by Android"};val name=rec?.deviceName?.takeIf{it.isNotBlank()}?:try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}?:"Unnamed device"
+ private fun add(r:ScanResult){
+  val rec=r.scanRecord
+  val addr=try{r.device.address?:"Unavailable"}catch(_:SecurityException){"Hidden by Android"}
   val services=rec?.serviceUuids?.map{it.uuid.toString()}?:emptyList()
   val m=rec?.manufacturerSpecificData?.let{s->buildString{for(i in 0 until s.size()){if(i>0)append(" · ");append("ID ");append(Integer.toHexString(s.keyAt(i)));append(": ");s.valueAt(i).forEach{b->append(String.format(Locale.US,"%02X",b.toInt() and 0xFF))}}}}.orEmpty()
   val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> buildString{append(entry.key.uuid);append(": ");entry.value.forEach{b->append(String.format(Locale.US,"%02X",b.toInt() and 0xFF))}}}.orEmpty()
-  val raw=rec?.bytes?.take(64)?.joinToString(" "){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}.orEmpty();val now=System.currentTimeMillis()
-  val category=classifyDevice(name,services,m,sd);synchronized(found){val old=found[addr];found[addr]=Device(addr,name,category,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20));val list=found.values.sortedByDescending{it.rssi};runOnUiThread{update?.invoke(list)}}
+  val raw=rec?.bytes?.take(64)?.joinToString(" "){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}.orEmpty()
+  val advertisedName=rec?.deviceName?.takeIf{it.isNotBlank()}?:extractAdvertisedName(rec?.bytes)
+  val cachedName=try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}
+  val now=System.currentTimeMillis()
+  synchronized(found){
+   val old=found[addr]
+   // Keep a previously learned name: later packets from the same device may omit the name field.
+   val name=advertisedName?:cachedName?:old?.name?.takeIf{it.isNotBlank()&&it!="Unnamed device"}?:"Unnamed device"
+   val category=classifyDevice(name,services,m,sd)
+   found[addr]=Device(addr,name,category,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20))
+   val list=found.values.sortedByDescending{it.rssi}
+   runOnUiThread{update?.invoke(list)}
+  }
  }
  private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}
  private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
@@ -80,6 +93,27 @@ class MainActivity:ComponentActivity() {
  }
  override fun onDestroy(){stop("App closed");update=null;statusUpdate=null;super.onDestroy()}
 }
+/** Reads Complete Local Name (0x09) and Shortened Local Name (0x08) AD structures.
+ * ScanRecord.deviceName is preferred, but parsing the advertisement is a safe fallback.
+ */
+private fun extractAdvertisedName(bytes:ByteArray?):String? {
+ if(bytes==null)return null
+ var index=0
+ while(index<bytes.size){
+  val length=bytes[index].toInt() and 0xFF
+  if(length==0)break
+  val end=index+1+length
+  if(end>bytes.size)break
+  val type=bytes[index+1].toInt() and 0xFF
+  if((type==0x08||type==0x09)&&length>1){
+   val value=String(bytes,index+2,length-1,Charsets.UTF_8).trim().trim('\u0000')
+   if(value.isNotBlank())return value
+  }
+  index=end
+ }
+ return null
+}
+
 private fun classifyDevice(name:String,services:List<String>,manufacturer:String,serviceData:String):String {
  val n=(name+" "+manufacturer+" "+serviceData).lowercase(Locale.ROOT)
  val u=services.map{raw->val compact=raw.replace("-","").lowercase(Locale.ROOT);if(compact.length==32)compact.substring(4,8) else compact}

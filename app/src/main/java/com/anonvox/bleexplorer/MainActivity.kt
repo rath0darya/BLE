@@ -1,11 +1,13 @@
 package com.anonvox.bleexplorer
 import android.Manifest
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.*
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
@@ -45,12 +47,12 @@ private data class Device(val address:String,val name:String,val category:String
 }
 class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
- private val found=linkedMapOf<String,Device>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
+ private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
  private val timeout=Runnable{stop("Scan complete")}
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
   var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")}
   update={devices=it};statusUpdate={a,s->scanning=a;status=s}
-  AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)}) }
+  AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)}) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
  private fun allowed():Boolean = requiredPermissions().all{ContextCompat.checkSelfPermission(this,it)==PackageManager.PERMISSION_GRANTED}
@@ -80,12 +82,30 @@ class MainActivity:ComponentActivity() {
   synchronized(found){
    val old=found[addr]
    // Keep a previously learned name: later packets from the same device may omit the name field.
-   val name=advertisedName?:cachedName?:old?.name?.takeIf{it.isNotBlank()&&it!="Unnamed device"}?:"Unnamed device"
+   // Retain the first valid name for this address; later BLE packets often omit it.
+   val retainedName=knownNames[addr]?:old?.name?.takeIf{it.isNotBlank()&&it!="Unnamed device"}
+   val name=retainedName?:advertisedName?:cachedName?:"Unnamed device"
+   if(name!="Unnamed device")knownNames[addr]=name
    val category=classifyDevice(name,services,m,sd)
    found[addr]=Device(addr,name,category,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20))
    val list=found.values.sortedByDescending{it.rssi}
    runOnUiThread{update?.invoke(list)}
   }
+ }
+ private fun pairDevice(device:Device){
+  if(!allowed()){requestPermissions(requiredPermissions(),701);Toast.makeText(this,"Allow Bluetooth permissions before pairing",Toast.LENGTH_LONG).show();return}
+  try{
+   val adapter=(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+   val remote=adapter?.getRemoteDevice(device.address)
+   if(remote==null){Toast.makeText(this,"Bluetooth device is unavailable",Toast.LENGTH_LONG).show();return}
+   when(remote.bondState){
+    BluetoothDevice.BOND_BONDED->Toast.makeText(this,"Device is already paired",Toast.LENGTH_SHORT).show()
+    BluetoothDevice.BOND_BONDING->Toast.makeText(this,"Pairing is already in progress",Toast.LENGTH_SHORT).show()
+    else->{val started=remote.createBond();Toast.makeText(this,if(started)"Android pairing requested. Complete the system pairing prompt." else "Android could not start pairing.",Toast.LENGTH_LONG).show()}
+   }
+  }catch(_:SecurityException){Toast.makeText(this,"Bluetooth permission is required to pair",Toast.LENGTH_LONG).show()}
+   catch(_:IllegalArgumentException){Toast.makeText(this,"Invalid or unavailable Bluetooth address",Toast.LENGTH_LONG).show()}
+   catch(_:Exception){Toast.makeText(this,"Could not start Bluetooth pairing",Toast.LENGTH_LONG).show()}
  }
  private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}
  private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
@@ -137,7 +157,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFF7DD3FC),secondary=Color(0xFFA5B4FC),background=Color(0xFF0A1020),surface=Color(0xFF121B2D),surfaceVariant=Color(0xFF202B40),onSurface=Color(0xFFF1F5F9),onSurfaceVariant=Color(0xFFB8C5D8))else lightColorScheme(primary=Color(0xFF0369A1),secondary=Color(0xFF4F46E5),background=Color(0xFFF4F7FC),surface=Color.White,surfaceVariant=Color(0xFFE8EEF7),onSurface=Color(0xFF102033),onSurfaceVariant=Color(0xFF52647B)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit){
+@Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit){
  var compact by remember{mutableStateOf(false)};var query by remember{mutableStateOf("")};var filter by remember{mutableStateOf("Any signal")};var selected by remember{mutableStateOf<Device?>(null)};var settings by remember{mutableStateOf(false)}
  val filters=listOf("Any signal","Strong","Weak","Named","Services","Recent")
  val shown=devices.filter{(it.name.contains(query,true)||it.address.contains(query,true))&&when(filter){"Strong"->it.rssi>=-68;"Weak"->it.rssi < -80;"Named"->it.name!="Unnamed device";"Services"->it.services.isNotEmpty();"Recent"->System.currentTimeMillis()-it.seen<5000;else->true}}
@@ -159,7 +179,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
   else items(shown,key={it.address}){d->DeviceCard(d,compact){selected=d}}
   item{Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.Info,null,modifier=Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant);Text("Each discovered device is labelled with its detected type. BLE broadcasts vary by device; some products remain invisible unless they advertise.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
  }}
- selected?.let{DeviceSheet(it){selected=null}}
+ selected?.let{device->DeviceSheet(device,{onPair(device)}){selected=null}}
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Scan settings")},text={Text("BLE asks for Nearby devices and Location permission before scanning. On older Android versions, Location services must also be switched on. Scans start only when you tap the button and stop after 30 seconds. No pairing or background scanning.")},confirmButton={TextButton(onClick={settings=false}){Text("Got it")}})
 }
 @Composable private fun Metric(label:String,value:String,icon:ImageVector,modifier:Modifier=Modifier){Column(modifier.clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha=.72f)).padding(horizontal=9.dp,vertical=11.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Icon(icon,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(17.dp));Text(value,fontWeight=FontWeight.Bold,fontSize=16.sp,maxLines=1,overflow=TextOverflow.Ellipsis);Text(label,fontSize=9.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)}}
@@ -174,12 +194,15 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
 @Composable private fun Glyph(d:Device,size:Int){val palettes=listOf(listOf(Color(0xFF0EA5E9),Color(0xFF6366F1)),listOf(Color(0xFF10B981),Color(0xFF0D9488)),listOf(Color(0xFFF59E0B),Color(0xFFEA580C)));Box(Modifier.size(size.dp).clip(RoundedCornerShape(17.dp)).background(Brush.linearGradient(palettes[kotlin.math.abs(d.name.hashCode()%palettes.size)])),contentAlignment=Alignment.Center){Icon(Icons.Default.BluetoothSearching,null,tint=Color.White,modifier=Modifier.size((size*.52).dp))}}
 @Composable private fun Tag(s:String){Text(s,Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal=8.dp,vertical=5.dp),fontSize=9.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun DeviceSheet(d:Device,close:()->Unit){ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+@Composable private fun DeviceSheet(d:Device,onPair:()->Unit,close:()->Unit){ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Glyph(d,58);Column(Modifier.weight(1f)){Text(d.name,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text("${d.category} · Detected Bluetooth broadcast",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)}}
  Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("SIGNAL","${d.rssi} dBm",Icons.Default.SignalCellularAlt,Modifier.weight(1f));Metric("QUALITY",d.quality,Icons.Default.CheckCircle,Modifier.weight(1f))}
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary); SignalHistory(d.history,d.tint)
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Detected category",d.category);Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
+ Text("Secure pairing",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+ Text("Uses Android Bluetooth pairing. BLE devices negotiate security through SMP; LE Secure Connections with ECDH P-256 is used when supported by both devices. The device and Android control the negotiated security level.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ Button(onClick=onPair,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("Pair securely")}
  Text("BLE does not measure exact distance. Signal strength is only a rough clue to proximity.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close details")}
 }}}

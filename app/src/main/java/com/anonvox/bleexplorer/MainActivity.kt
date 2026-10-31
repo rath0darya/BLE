@@ -42,7 +42,7 @@ import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.*
 
-private data class Device(val address:String,val name:String,val category:String,val rssi:Int,val seen:Long,val first:Long,val tx:Int?,val services:List<String>,val manufacturer:String,val serviceData:String,val raw:String,val history:List<Int>) {
+private data class Device(val address:String,val name:String,val category:String,val transport:String,val rssi:Int,val seen:Long,val first:Long,val tx:Int?,val services:List<String>,val manufacturer:String,val serviceData:String,val raw:String,val history:List<Int>) {
  val quality get()=when { rssi>=-55->"Very strong";rssi>=-68->"Strong";rssi>=-80->"Moderate";else->"Weak" }
  val tint get()=when { rssi>=-55->Color(0xFF22C55E);rssi>=-68->Color(0xFF84CC16);rssi>=-80->Color(0xFFF59E0B);else->Color(0xFFEF4444) }
 }
@@ -77,6 +77,7 @@ class MainActivity:ComponentActivity() {
   val m=rec?.manufacturerSpecificData?.let{s->buildString{for(i in 0 until s.size()){if(i>0)append(" · ");append("ID ");append(Integer.toHexString(s.keyAt(i)));append(": ");s.valueAt(i).forEach{b->append(String.format(Locale.US,"%02X",b.toInt() and 0xFF))}}}}.orEmpty()
   val sd=rec?.serviceData?.entries?.joinToString(" · "){entry -> buildString{append(entry.key.uuid);append(": ");entry.value.forEach{b->append(String.format(Locale.US,"%02X",b.toInt() and 0xFF))}}}.orEmpty()
   val raw=rec?.bytes?.take(64)?.joinToString(" "){byte -> String.format(Locale.US,"%02X",byte.toInt() and 0xFF)}.orEmpty()
+  val transport=try{when(r.device.type){BluetoothDevice.DEVICE_TYPE_LE->"Bluetooth Low Energy (LE)";BluetoothDevice.DEVICE_TYPE_CLASSIC->"Bluetooth Classic (BR/EDR)";BluetoothDevice.DEVICE_TYPE_DUAL->"Dual-mode (LE + Classic BR/EDR)";else->"Unknown — Android has not identified the transport"}}catch(_:SecurityException){"Unknown — Bluetooth permission required"}
   val advertisedName=rec?.deviceName?.takeIf{it.isNotBlank()}?:extractAdvertisedName(rec?.bytes)
   val cachedName=try{r.device.name?.takeIf{it.isNotBlank()}}catch(_:SecurityException){null}
   val now=System.currentTimeMillis()
@@ -88,7 +89,7 @@ class MainActivity:ComponentActivity() {
    val name=retainedName?:advertisedName?:cachedName?:"Unnamed device"
    if(name!="Unnamed device")knownNames[addr]=name
    val category=classifyDevice(name,services,m,sd)
-   found[addr]=Device(addr,name,category,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20))
+   found[addr]=Device(addr,name,category,transport,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20))
    val list=found.values.sortedByDescending{it.rssi}
    runOnUiThread{update?.invoke(list)}
   }
@@ -198,19 +199,20 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
 @Composable private fun DeviceSheet(d:Device,onPair:()->Unit,close:()->Unit){ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Glyph(d,58);Column(Modifier.weight(1f)){Text(d.name,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text("${d.category} · Detected Bluetooth broadcast",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)}}
  Button(onClick=onPair,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(15.dp)){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("Pair securely",fontWeight=FontWeight.Bold)}
+ Text("PAIRING FORMAT & COMPATIBILITY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+ Detail("Detected Bluetooth transport",d.transport)
+ Detail("Pairing protocol","BLE devices use SMP when pairing is supported. Classic Bluetooth uses BR/EDR pairing.")
+ Detail("Possible pairing methods","Just Works, Passkey Entry, Numeric Comparison or Out-of-Band (OOB) — selected during pairing based on both devices.")
+ Detail("LE Secure Connections","Not confirmed by scan. If both devices support it, BLE pairing can use ECDH P-256.")
+ Detail("Pairing availability","Not guaranteed by discovery. Some devices only broadcast and do not accept pairing.")
  Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("SIGNAL","${d.rssi} dBm",Icons.Default.SignalCellularAlt,Modifier.weight(1f));Metric("QUALITY",d.quality,Icons.Default.CheckCircle,Modifier.weight(1f))}
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary); SignalHistory(d.history,d.tint)
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Detected category",d.category);Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
- Text("PAIRING & SUPPORTED FORMATS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Detail("Detected connection format","Bluetooth Low Energy (BLE) — confirmed by this scan")
- Detail("BLE pairing protocol","Security Manager Protocol (SMP), if the device supports pairing")
- Detail("Pairing methods","Just Works · Passkey Entry · Numeric Comparison · Out-of-Band (OOB). The method is negotiated with the device.")
- Detail("LE Secure Connections","Unknown — support is not exposed in ordinary BLE advertisements. When supported by both sides, it uses ECDH P-256.")
- Detail("Classic Bluetooth (BR/EDR)","Not detected by this BLE scan. Dual-mode support is unknown.")
+ Text("PAIRING SECURITY DETAILS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Bonding support","Unknown until Android attempts pairing and the device responds.")
  Detail("Negotiated security level","Available only after the pairing exchange; this scan cannot determine it.")
- Text("Only the device and Android can confirm the actual pairing methods and security level. Some BLE advertisers are broadcast-only and do not accept pairing.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ Text("A BLE scan cannot discover Classic-only devices. Their pairing format can only be shown after Classic discovery or connection. Transport detection does not guarantee that a device accepts pairing.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  Text("BLE does not measure exact distance. Signal strength is only a rough clue to proximity.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
  OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close details")}
 }}}

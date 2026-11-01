@@ -2,6 +2,10 @@ package com.anonvox.bleexplorer
 import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
@@ -42,6 +46,7 @@ import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.*
 
+private data class BmsSnapshot(val status:String="Not connected",val batteryLevel:Int?=null,val characteristics:List<String> = emptyList())
 private data class Device(val address:String,val name:String,val category:String,val transport:String,val rssi:Int,val seen:Long,val first:Long,val tx:Int?,val services:List<String>,val manufacturer:String,val serviceData:String,val raw:String,val history:List<Int>) {
  val quality get()=when { rssi>=-55->"Very strong";rssi>=-68->"Strong";rssi>=-80->"Moderate";else->"Weak" }
  val tint get()=when { rssi>=-55->Color(0xFF22C55E);rssi>=-68->Color(0xFF84CC16);rssi>=-80->Color(0xFFF59E0B);else->Color(0xFFEF4444) }
@@ -49,11 +54,11 @@ private data class Device(val address:String,val name:String,val category:String
 class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
  private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
- private val timeout=Runnable{stop("Scan complete")}
+ private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;private var bmsUpdate:((BmsSnapshot)->Unit)?=null
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
-  var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")}
-  update={devices=it};statusUpdate={a,s->scanning=a;status=s}
-  AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)}) }
+  var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
+  update={devices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
+  AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},bms) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
  private fun allowed():Boolean = requiredPermissions().all{ContextCompat.checkSelfPermission(this,it)==PackageManager.PERMISSION_GRANTED}
@@ -94,6 +99,47 @@ class MainActivity:ComponentActivity() {
    runOnUiThread{update?.invoke(list)}
   }
  }
+ private fun connectBms(device:Device){
+  if(!allowed()){requestPermissions(requiredPermissions(),701);Toast.makeText(this,"Allow Nearby devices permission to connect",Toast.LENGTH_LONG).show();return}
+  try{
+   bmsGatt?.close();bmsGatt=null;bmsUpdate?.invoke(BmsSnapshot("Connecting to "+device.name+"…"))
+   val remote=(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.getRemoteDevice(device.address)
+   if(remote==null){bmsUpdate?.invoke(BmsSnapshot("Device unavailable"));return}
+   bmsGatt=remote.connectGatt(this,false,object:BluetoothGattCallback(){
+    override fun onConnectionStateChange(gatt:BluetoothGatt,status:Int,newState:Int){
+     if(status!=BluetoothGatt.GATT_SUCCESS){runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connection failed (GATT "+status+")"))};gatt.close();return}
+     if(newState==BluetoothProfile.STATE_CONNECTED){runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · discovering BMS services"))};gatt.discoverServices()}
+     else if(newState==BluetoothProfile.STATE_DISCONNECTED){runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Disconnected"))};gatt.close();if(bmsGatt===gatt)bmsGatt=null}
+    }
+    override fun onServicesDiscovered(gatt:BluetoothGatt,status:Int){
+     if(status!=BluetoothGatt.GATT_SUCCESS){runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · service discovery failed"))};return}
+     val rows=mutableListOf<String>();var battery:BluetoothGattCharacteristic?=null
+     for(service in gatt.services){
+      rows.add("SERVICE  "+service.uuid)
+      for(ch in service.characteristics){
+       val p=mutableListOf<String>()
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_READ!=0)p.add("Read")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE!=0)p.add("Write")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE!=0)p.add("Write NR")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY!=0)p.add("Notify")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE!=0)p.add("Indicate")
+       rows.add(ch.uuid.toString()+" · "+p.joinToString("/").ifBlank{"No standard access flags"})
+       if(ch.uuid.toString().equals("00002a19-0000-1000-8000-00805f9b34fb",true))battery=ch
+      }
+     }
+     runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · "+gatt.services.size+" services discovered",characteristics=rows))}
+     battery?.let{try{gatt.readCharacteristic(it)}catch(_:SecurityException){}}
+    }
+    @Deprecated("Deprecated Android callback")
+    override fun onCharacteristicRead(gatt:BluetoothGatt,characteristic:BluetoothGattCharacteristic,status:Int){
+     if(status==BluetoothGatt.GATT_SUCCESS&&characteristic.uuid.toString().equals("00002a19-0000-1000-8000-00805f9b34fb",true)){
+      val level=characteristic.value?.firstOrNull()?.toInt()?.and(0xFF)
+      runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · "+gatt.services.size+" services discovered",level,gatt.services.flatMap{sv->listOf("SERVICE  "+sv.uuid)+sv.characteristics.map{it.uuid.toString()}}))}
+     }
+    }
+   })
+  }catch(_:SecurityException){bmsUpdate?.invoke(BmsSnapshot("Bluetooth permission required"))}catch(_:Exception){bmsUpdate?.invoke(BmsSnapshot("Could not connect to this device"))}
+ }
  private fun pairDevice(device:Device){
   if(!allowed()){requestPermissions(requiredPermissions(),701);Toast.makeText(this,"Allow Bluetooth permissions before pairing",Toast.LENGTH_LONG).show();return}
   try{
@@ -113,7 +159,7 @@ class MainActivity:ComponentActivity() {
  private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
   startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_SUBJECT,"BLE Explorer results");putExtra(Intent.EXTRA_TEXT,csv)},"Share scan results"))
  }
- override fun onDestroy(){stop("App closed");update=null;statusUpdate=null;super.onDestroy()}
+ override fun onDestroy(){stop("App closed");try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
 }
 /** Reads Complete Local Name (0x09) and Shortened Local Name (0x08) AD structures.
  * ScanRecord.deviceName is preferred, but parsing the advertisement is a safe fallback.
@@ -159,7 +205,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFF7DD3FC),secondary=Color(0xFFA5B4FC),background=Color(0xFF0A1020),surface=Color(0xFF121B2D),surfaceVariant=Color(0xFF202B40),onSurface=Color(0xFFF1F5F9),onSurfaceVariant=Color(0xFFB8C5D8))else lightColorScheme(primary=Color(0xFF0369A1),secondary=Color(0xFF4F46E5),background=Color(0xFFF4F7FC),surface=Color.White,surfaceVariant=Color(0xFFE8EEF7),onSurface=Color(0xFF102033),onSurfaceVariant=Color(0xFF52647B)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit){
+@Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,bms:BmsSnapshot){
  var compact by remember{mutableStateOf(false)};var query by remember{mutableStateOf("")};var filter by remember{mutableStateOf("Any signal")};var selected by remember{mutableStateOf<Device?>(null)};var settings by remember{mutableStateOf(false)}
  val filters=listOf("Any signal","Strong","Weak","Named","Services","Recent")
  val shown=devices.filter{(it.name.contains(query,true)||it.address.contains(query,true))&&when(filter){"Strong"->it.rssi>=-68;"Weak"->it.rssi < -80;"Named"->it.name!="Unnamed device";"Services"->it.services.isNotEmpty();"Recent"->System.currentTimeMillis()-it.seen<5000;else->true}}
@@ -181,7 +227,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
   else items(shown,key={it.address}){d->DeviceCard(d,compact){selected=d}}
   item{Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.Info,null,modifier=Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant);Text("Each discovered device is labelled with its detected type. BLE broadcasts vary by device; some products remain invisible unless they advertise.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
  }}
- selected?.let{device->DeviceSheet(device,{onPair(device)}){selected=null}}
+ selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},bms){selected=null}}
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Scan settings")},text={Text("BLE asks for Nearby devices and Location permission before scanning. On older Android versions, Location services must also be switched on. Scans start only when you tap the button and stop after 30 seconds. Pairing is initiated only when you choose Pair securely in a device's details.")},confirmButton={TextButton(onClick={settings=false}){Text("Got it")}})
 }
 @Composable private fun Metric(label:String,value:String,icon:ImageVector,modifier:Modifier=Modifier){Column(modifier.clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha=.72f)).padding(horizontal=9.dp,vertical=11.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Icon(icon,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(17.dp));Text(value,fontWeight=FontWeight.Bold,fontSize=16.sp,maxLines=1,overflow=TextOverflow.Ellipsis);Text(label,fontSize=9.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)}}
@@ -196,7 +242,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
 @Composable private fun Glyph(d:Device,size:Int){val palettes=listOf(listOf(Color(0xFF0EA5E9),Color(0xFF6366F1)),listOf(Color(0xFF10B981),Color(0xFF0D9488)),listOf(Color(0xFFF59E0B),Color(0xFFEA580C)));Box(Modifier.size(size.dp).clip(RoundedCornerShape(17.dp)).background(Brush.linearGradient(palettes[kotlin.math.abs(d.name.hashCode()%palettes.size)])),contentAlignment=Alignment.Center){Icon(Icons.Default.BluetoothSearching,null,tint=Color.White,modifier=Modifier.size((size*.52).dp))}}
 @Composable private fun Tag(s:String){Text(s,Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal=8.dp,vertical=5.dp),fontSize=9.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun DeviceSheet(d:Device,onPair:()->Unit,close:()->Unit){ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+@Composable private fun DeviceSheet(d:Device,onPair:()->Unit,onConnectBms:()->Unit,bms:BmsSnapshot,close:()->Unit){ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
  Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Glyph(d,58);Column(Modifier.weight(1f)){Text(d.name,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text("${d.category} · Detected Bluetooth broadcast",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)}}
  Button(onClick=onPair,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(15.dp)){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("Pair securely",fontWeight=FontWeight.Bold)}
  Text("PAIRING FORMAT & COMPATIBILITY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
@@ -206,6 +252,21 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
  Detail("LE Secure Connections","Not confirmed by scan. If both devices support it, BLE pairing can use ECDH P-256.")
  Detail("Pairing availability","Not guaranteed by discovery. Some devices only broadcast and do not accept pairing.")
  Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("SIGNAL","${d.rssi} dBm",Icons.Default.SignalCellularAlt,Modifier.weight(1f));Metric("QUALITY",d.quality,Icons.Default.CheckCircle,Modifier.weight(1f))}
+ if(d.category=="EV Batteries"||d.category=="Batteries"){
+  Text("EV BATTERY · BMS MONITOR",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+   Text(bms.status,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    Metric("BATTERY LEVEL",bms.batteryLevel?.let{it.toString()+"%"}?:"—",Icons.Default.BatteryFull,Modifier.weight(1f))
+    Metric("GATT SERVICES",bms.characteristics.count{it.startsWith("SERVICE")}.toString(),Icons.Default.SettingsBluetooth,Modifier.weight(1f))
+   }
+   Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & read BMS data")}
+   Text("LIVE TELEMETRY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
+   listOf("Pack voltage","Charge / discharge current","State of charge (SOC)","State of health (SOH)","Remaining / full capacity","Cell voltage min / max","Cell voltage difference","Cell-by-cell voltages","Battery temperature sensors","Charge / discharge MOSFET","Cycle count","Protection & fault alarms").forEach{label->Detail(label,"Not exposed by this device's currently decoded GATT data")}
+   Text("The standard Bluetooth Battery Service can provide a percentage only. Pack and cell telemetry requires a supported BMS vendor protocol or documented GATT characteristics. Raw service and characteristic UUIDs below help identify compatible hardware.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   if(bms.characteristics.isNotEmpty()){Text("DISCOVERED GATT CHARACTERISTICS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall);bms.characteristics.take(60).forEach{Text(it,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+  }
+ }
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary); SignalHistory(d.history,d.tint)
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Detected category",d.category);Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})

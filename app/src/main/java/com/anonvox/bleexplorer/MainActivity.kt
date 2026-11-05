@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.*
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.*
 import android.widget.Toast

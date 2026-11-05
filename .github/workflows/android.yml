@@ -100,7 +100,7 @@ jobs:
             gh release delete "$tag" --yes --cleanup-tag
           done
       - name: Publish installable versioned GitHub Release
-        if: false
+        if: steps.signing.outputs.release_ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.3.${{ github.run_number }}

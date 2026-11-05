@@ -304,7 +304,6 @@ private fun gattRowDescription(row:String):String=when{
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),tertiary=Color(0xFF94748D),background=Color(0xFF231610),surface=Color(0xFF35241F),surfaceVariant=Color(0xFF49332B),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1),outline=Color(0xFF806457))else lightColorScheme(primary=Color(0xFF9D320C),secondary=Color(0xFFB8521D),tertiary=Color(0xFF94748D),background=Color(0xFFF1E7E2),surface=Color(0xFFFFFAF6),surfaceVariant=Color(0xFFEAD8CE),onSurface=Color(0xFF5A2D1D),onSurfaceVariant=Color(0xFF806457),outline=Color(0xFFD6BDAE)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Screen(devices:List<Device>,pairedDevices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,onDisconnectBms:(Device)->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
  var compact by remember{mutableStateOf(false)}
  var query by remember{mutableStateOf("")}

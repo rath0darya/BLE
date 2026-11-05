@@ -394,11 +394,11 @@ private fun gattRowDescription(row:String):String=when{
    Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
     Text("Device intelligence tools",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
     Text("Five connected capabilities. Start a scan, inspect evidence, audit your authorized network and export the findings.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-    ToolTile("P1 · Deep Device Inspector","Tap any discovered device for radio details, evidence, signal history and BLE GATT inspection",Icons.Default.ManageSearch,{})
+    FeatureNote("P1 · Deep Device Inspector","Tap any discovered device card to inspect radio details, signal history, raw advertisement evidence and supported BLE GATT services.")
     ToolTile("P2 · Multi-protocol Discovery","BLE + Bluetooth Classic scan together; inspect nearby Wi-Fi access points and local IP services",Icons.Default.Hub,{onScan()})
-    ToolTile("P3 · Evidence-based Identification","Observed names, classes, UUIDs and manufacturer payloads; estimates and unavailable fields are labelled",Icons.Default.FactCheck,{})
+    FeatureNote("P3 · Evidence-based Identification","Classification uses observed names, Bluetooth classes, service UUIDs and manufacturer payloads. Estimates and unavailable information are labelled.")
     ToolTile("P4 · Network & CCTV Intelligence","Run authorized subnet checks for ONVIF, SSDP/UPnP, RTSP and reachable management ports",Icons.Default.Security,onNetworkAudit)
-    ToolTile("P5 · Evidence Reports","Export captured Bluetooth, Wi-Fi and network audit evidence as TXT, JSON and PDF",Icons.Default.Description,{if(devices.isNotEmpty())onShare() else onNearbyWifi()})
+    ToolTile("P5 · Evidence Reports","Export Bluetooth, Wi-Fi or network-audit evidence as TXT, JSON and PDF",Icons.Default.Description,{if(devices.isNotEmpty())onShare() else onScan()})
     ToolTile("Nearby Wi-Fi access points","Scan broadcast access points; this does not enumerate clients behind a router",Icons.Default.Wifi,onNearbyWifi)
    }
   }
@@ -436,6 +436,9 @@ private fun gattRowDescription(row:String):String=when{
  }}
  selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},{onDisconnectBms(device)},{onOpenBluetoothSettings()},bms){selected=null}}
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Discovery settings")},text={Text("Bluetooth discovery requires Nearby devices permission. Android versions and device manufacturers may impose additional restrictions. Scans start only when requested and stop automatically after 30 seconds.")},confirmButton={TextButton(onClick={settings=false}){Text("Done")}})
+}
+@Composable private fun FeatureNote(title:String,subtitle:String){
+ Surface(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(19.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=2.dp){Column(Modifier.padding(15.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(title,fontWeight=FontWeight.SemiBold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
 }
 @Composable private fun ToolTile(title:String,subtitle:String,icon:ImageVector,onClick:()->Unit){
  Surface(onClick=onClick,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(19.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=2.dp){

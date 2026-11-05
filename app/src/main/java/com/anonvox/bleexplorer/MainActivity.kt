@@ -392,6 +392,18 @@ private fun gattRowDescription(row:String):String=when{
   }
   item{
    Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+    Text("Device intelligence tools",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+    Text("Five connected capabilities. Start a scan, inspect evidence, audit your authorized network and export the findings.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    ToolTile("P1 · Deep Device Inspector","Tap any discovered device for radio details, evidence, signal history and BLE GATT inspection",Icons.Default.ManageSearch,{})
+    ToolTile("P2 · Multi-protocol Discovery","BLE + Bluetooth Classic scan together; inspect nearby Wi-Fi access points and local IP services",Icons.Default.Hub,{onScan()})
+    ToolTile("P3 · Evidence-based Identification","Observed names, classes, UUIDs and manufacturer payloads; estimates and unavailable fields are labelled",Icons.Default.FactCheck,{})
+    ToolTile("P4 · Network & CCTV Intelligence","Run authorized subnet checks for ONVIF, SSDP/UPnP, RTSP and reachable management ports",Icons.Default.Security,onNetworkAudit)
+    ToolTile("P5 · Evidence Reports","Export captured Bluetooth, Wi-Fi and network audit evidence as TXT, JSON and PDF",Icons.Default.Description,{if(devices.isNotEmpty())onShare() else onNearbyWifi()})
+    ToolTile("Nearby Wi-Fi access points","Scan broadcast access points; this does not enumerate clients behind a router",Icons.Default.Wifi,onNearbyWifi)
+   }
+  }
+  item{
+   Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
     Text("Explore by type",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
     Text("Choose a category to filter devices actually discovered in this scan.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(13.dp)){
@@ -420,14 +432,6 @@ private fun gattRowDescription(row:String):String=when{
     Text(if(devices.isEmpty())"Start a scan to show live Bluetooth devices. No sample devices are displayed." else "Try another category or clear the search.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall,textAlign=androidx.compose.ui.text.style.TextAlign.Center)
    }
   } else items(shown,key={it.address}){d->DeviceCard(d,compact){selected=d}}
-  item{
-   Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
-    Text("More discovery tools",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
-    ToolTile("Local network & CCTV audit","ONVIF, SSDP and reachable service checks",Icons.Default.Security,onNetworkAudit)
-    ToolTile("Nearby Wi-Fi access points","Discover broadcast networks around this phone",Icons.Default.Wifi,onNearbyWifi)
-    ToolTile("CCTV discovery information","Understand supported discovery methods",Icons.Default.CameraAlt,onNearbyWifiDirect)
-   }
-  }
   item{Text("Only observed values are shown. Device type is an estimate based on broadcast evidence; missing details remain unavailable until the device exposes them.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
  }}
  selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},{onDisconnectBms(device)},{onOpenBluetoothSettings()},bms){selected=null}}

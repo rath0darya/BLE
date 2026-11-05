@@ -132,7 +132,12 @@ class NetworkAuditActivity:ComponentActivity() {
   }catch(_:Exception){}
  }
 
- private fun isLocalEndpoint(url:String,expectedIp:String):Boolean=try{\n  val host=URL(url).host\n  host.isNotBlank()&&InetAddress.getAllByName(host).any{it.hostAddress==expectedIp||it.isSiteLocalAddress||it.isLinkLocalAddress}\n }catch(_:Exception){false}\n\n private fun xmlValue(xml:String,tag:String):String?{
+ private fun isLocalEndpoint(url:String,expectedIp:String):Boolean=try{
+  val host=URL(url).host
+  host.isNotBlank()&&InetAddress.getAllByName(host).any{it.hostAddress==expectedIp||it.isSiteLocalAddress||it.isLinkLocalAddress}
+ }catch(_:Exception){false}
+
+ private fun xmlValue(xml:String,tag:String):String?{
   val escaped=Regex.escape(tag)
   return Regex("<(?:[A-Za-z0-9_-]+:)?$escaped(?:\\s[^>]*)?>(.*?)</(?:[A-Za-z0-9_-]+:)?$escaped>",setOf(RegexOption.IGNORE_CASE,RegexOption.DOT_MATCHES_ALL))
    .find(xml)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"),"")?.replace("&amp;","&")?.replace("&lt;","<")?.replace("&gt;",">")?.trim()?.takeIf{it.isNotBlank()}

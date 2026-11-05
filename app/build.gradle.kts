@@ -9,11 +9,11 @@ android {
   versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
   versionName = System.getenv("VERSION_NAME") ?: "1.1.0"
  }
+ val releaseKeystore = System.getenv("KEYSTORE_PATH")
  signingConfigs {
   create("release") {
-   val keystorePath = System.getenv("KEYSTORE_PATH")
-   if (!keystorePath.isNullOrBlank()) {
-    storeFile = file(keystorePath)
+   if (!releaseKeystore.isNullOrBlank()) {
+    storeFile = file(releaseKeystore)
     storePassword = System.getenv("KEYSTORE_PASSWORD")
     keyAlias = System.getenv("KEY_ALIAS")
     keyPassword = System.getenv("KEY_PASSWORD")
@@ -23,7 +23,7 @@ android {
  buildTypes {
   release {
    isMinifyEnabled = false
-   signingConfig = signingConfigs.getByName("release")
+   if (!releaseKeystore.isNullOrBlank()) signingConfig = signingConfigs.getByName("release")
   }
  }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

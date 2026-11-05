@@ -114,32 +114,34 @@ class NearbyWifiActivity:ComponentActivity(){
  @OptIn(ExperimentalMaterial3Api::class)
  @Composable private fun NearbyWifiScreen(onBack:()->Unit,onScan:()->Unit,onStatus:(()->Unit)->Unit,onExport:(List<WifiSignal>)->Unit){
   var rows by remember{mutableStateOf(emptyList<WifiSignal>())}
-  var status by remember{mutableStateOf("Tap scan to inspect Wi-Fi access points broadcasting nearby.")}
+  var status by remember{mutableStateOf("Ready")}
   var scanning by remember{mutableStateOf(false)}
-  onStatus{rows=latest;scanning=false;status=if(!permitted())"Location permission is required by Android to read nearby Wi-Fi scan results." else if(!locationEnabled())"Turn on Location services and scan again." else "Showing nearby Wi-Fi access points. Camera matches are only SSID-name hints."}
+  var expanded by remember{mutableStateOf<String?>(null)}
+  onStatus{rows=latest;scanning=false;status=if(!permitted())"Location permission required" else if(!locationEnabled())"Turn on Location services" else "Scan results updated"}
   MaterialTheme(colorScheme=if(isSystemInDarkTheme())darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),background=Color(0xFF231610),surface=Color(0xFF35241F),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1))else lightColorScheme(primary=Color(0xFF9D320C),secondary=Color(0xFFB8521D),background=Color(0xFFFFF7EF),surface=Color(0xFFFFFAF6),onSurface=Color(0xFF5A2D1D),onSurfaceVariant=Color(0xFF806457))){
-   Scaffold(topBar={TopAppBar(title={Column{Text("Nearby Wi-Fi signals",fontWeight=FontWeight.Bold);Text("Access points · not client devices",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}})}){padding->
-    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-     item{Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-      Text("Nearby radio discovery",fontSize=20.sp,fontWeight=FontWeight.Bold)
-      Text("Scans Wi-Fi access points visible to this phone, even when they are not on your connected network. It cannot see devices connected behind those access points.")
-      Button(onClick={scanning=true;status="Requesting Wi-Fi scan…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby Wi-Fi")}
-      OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
-      Text(status,style=MaterialTheme.typography.bodySmall)
-      Text("Access points: ${rows.size} · CCTV-name hints: ${rows.count{it.cameraHint}}",fontWeight=FontWeight.SemiBold)
+   Scaffold(topBar={TopAppBar(title={Text("Wi-Fi scanner",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},actions={IconButton(onClick={onExport(rows)},enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,"Export")}})}){padding->
+    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+     item{Card(shape=RoundedCornerShape(20.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+      Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Access points",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("${rows.size} found · ${rows.count{it.cameraHint}} camera-name hints",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};if(scanning)CircularProgressIndicator(Modifier.size(25.dp),strokeWidth=2.dp)}
+      Button(onClick={scanning=true;status="Scanning…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby")}
+      Text(status,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      }}}
-     if(rows.isEmpty())item{Text("No scan results available yet. Enable Wi-Fi and Location, then scan again. Android may throttle repeated Wi-Fi scans.")}
-     items(rows,key={it.bssid}){r->Card(shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
-      Row(verticalAlignment=Alignment.CenterVertically){Icon(if(r.cameraHint)Icons.Default.CameraAlt else Icons.Default.Wifi,null);Spacer(Modifier.width(8.dp));Text(r.ssid,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(r.cameraHint)Text("CAMERA HINT",color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelSmall)}
-      Text("BSSID: ${r.bssid}",style=MaterialTheme.typography.bodySmall)
-      Text("Signal: ${r.rssi} dBm · Frequency: ${r.frequency} MHz · ${r.band}"+(r.channel?.let{" · Channel $it"}?:""),style=MaterialTheme.typography.bodySmall)
-      Text("Security: ${r.security.ifBlank{"Unknown"}}",style=MaterialTheme.typography.bodySmall)
-      Text("Assessment: ${r.securityAssessment}",style=MaterialTheme.typography.bodySmall,color=if(r.securityAssessment.startsWith("Weak")||r.securityAssessment.startsWith("Open"))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-      if(r.cameraHint)Text("The network name contains a camera-related term. This is only a clue, not confirmation that CCTV is present.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
+     if(rows.isEmpty())item{EmptyToolState("No access points yet","Enable Wi-Fi and Location, then scan.")}
+     items(rows,key={it.bssid}){r->Card(shape=RoundedCornerShape(16.dp),onClick={expanded=if(expanded==r.bssid)null else r.bssid}){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+      Row(verticalAlignment=Alignment.CenterVertically){Icon(if(r.cameraHint)Icons.Default.CameraAlt else Icons.Default.Wifi,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(r.ssid,fontWeight=FontWeight.SemiBold,maxLines=1);Text(r.bssid,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text("${r.rssi} dBm",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)}
+      Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){AssistChip(onClick={},label={Text(r.band)});AssistChip(onClick={},label={Text(r.securityAssessment.substringBefore(" · "))});if(r.cameraHint)AssistChip(onClick={},label={Text("Camera hint")})}
+      if(expanded==r.bssid){
+       HorizontalDivider()
+       Text("Frequency: ${r.frequency} MHz · Channel: ${r.channel?.toString()?: "Unavailable"}",style=MaterialTheme.typography.bodySmall)
+       Text("Security: ${r.security.ifBlank{"Unknown"}}",style=MaterialTheme.typography.bodySmall)
+       Text("Assessment: ${r.securityAssessment}",style=MaterialTheme.typography.bodySmall)
+       if(r.cameraHint)Text("SSID contains a camera-related name only; this does not confirm CCTV.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+      }
      }}}
-     item{Text("Important: Wi-Fi scans reveal nearby access points, not the phones/cameras connected to them. A camera using an ordinary router SSID or wired Ethernet cannot be identified this way. Android also restricts scan frequency and results.",style=MaterialTheme.typography.labelSmall)}
+     item{Text("Nearby access points only · router-connected clients are not exposed by Android Wi-Fi scanning.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
     }
    }
   }
  }
+
 }

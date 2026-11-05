@@ -241,35 +241,38 @@ class NetworkAuditActivity:ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun NetworkAuditScreen(onBack:()->Unit,onScan: ((List<LanFinding>, String, Boolean) -> Unit) -> Unit,onStop:()->Unit,onExport:(List<LanFinding>)->Unit){
  var rows by remember{mutableStateOf(emptyList<LanFinding>())}
- var status by remember{mutableStateOf("Ready · connect to Wi-Fi and start an audit")}
+ var status by remember{mutableStateOf("Ready · connect to Wi-Fi")}
  var active by remember{mutableStateOf(false)}
  var onlyCameras by remember{mutableStateOf(false)}
+ var expandedIp by remember{mutableStateOf<String?>(null)}
  val shown=rows.filter{!onlyCameras||it.camera}
  MaterialTheme(colorScheme=if(androidx.compose.foundation.isSystemInDarkTheme())darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),background=Color(0xFF231610),surface=Color(0xFF35241F),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1))else lightColorScheme(primary=Color(0xFF9D320C),secondary=Color(0xFFB8521D),background=Color(0xFFFFF7EF),surface=Color(0xFFFFFAF6),onSurface=Color(0xFF5A2D1D),onSurfaceVariant=Color(0xFF806457))){
-  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized active local network",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
-   LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-    item{Column(Modifier.fillMaxWidth().background(Color(0xFF5A2D1D),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-     Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFFFBDA95));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
-     Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFFFE9D2),style=MaterialTheme.typography.bodyMedium)
-     Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
-     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
-     OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
-     Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFE9D2))
-    }}
-    item{Row(verticalAlignment=Alignment.CenterVertically){Text("Show CCTV candidates only",modifier=Modifier.weight(1f));Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}
-    if(shown.isEmpty())item{Text(if(rows.isEmpty())"No results yet. Start a scan while connected to your own or administered Wi-Fi." else "No camera candidates found.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
-    items(shown,key={it.ip}){f->Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=if(f.camera)Color(0xFFFBDA95)else Color(0xFFDAA96A));Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall)}}
-     Text(f.confidence,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-     if(f.details.isNotBlank())Text(f.details,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold,color=Color(0xFFFBDA95))
-     else if(f.camera)Text("Device model details were not exposed without authentication.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-     Text("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"},style=MaterialTheme.typography.bodySmall)
-     Text("Protocols: "+f.protocols.joinToString().ifBlank{"No protocol signature"},style=MaterialTheme.typography.bodySmall)
-     Text("Security review",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium)
-     f.risks.forEach{risk->Text("• "+risk,style=MaterialTheme.typography.bodySmall,color=if(risk.startsWith("HIGH"))Color(0xFFFCA5A5)else Color(0xFFFCD34D))}
+  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Text("Network audit",fontWeight=FontWeight.Bold)},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},actions={IconButton(onClick={onExport(rows)},enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,"Export")}})}){padding->
+   LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+    item{Card(shape=RoundedCornerShape(20.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(11.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Local network",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("${rows.size} devices · ${rows.count{it.camera}} CCTV candidates · ${rows.sumOf{it.risks.size}} reviews",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};if(active)CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp)}
+     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Stop else Icons.Default.Radar,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start network audit")}
+     Text(status,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}}
-    item{Text("Limitations: discovery is heuristic unless ONVIF responds. Open ports indicate reachability, not confirmed vulnerabilities. This tool does not test credentials, firmware CVEs, anonymous streams, cloud exposure or exploitability. “No obvious risk” is not a security certification.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    item{Row(verticalAlignment=Alignment.CenterVertically){Text("CCTV candidates only",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium);Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}
+    if(shown.isEmpty())item{EmptyAuditState(if(rows.isEmpty())"No scan results" else "No CCTV candidates",if(rows.isEmpty())"Start an audit on your own or administered Wi-Fi network." else "Turn off the CCTV filter to see all discovered devices.")}
+    items(shown,key={it.ip}){f->Card(shape=RoundedCornerShape(16.dp),onClick={expandedIp=if(expandedIp==f.ip)null else f.ip}){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Devices,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(if(expandedIp==f.ip)"Less" else "Details",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)}
+     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){AssistChip(onClick={},label={Text(f.confidence.substringBefore(" · "))});AssistChip(onClick={},label={Text("${f.ports.size} ports")})}
+     if(expandedIp==f.ip){
+      HorizontalDivider()
+      Text("Confidence: ${f.confidence}",style=MaterialTheme.typography.bodySmall)
+      Text("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"},style=MaterialTheme.typography.bodySmall)
+      Text("Protocols: "+f.protocols.joinToString().ifBlank{"No signature"},style=MaterialTheme.typography.bodySmall)
+      if(f.details.isNotBlank())Text(f.details,style=MaterialTheme.typography.bodySmall)
+      if(f.risks.isNotEmpty()){Text("Security review",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium);f.risks.forEach{risk->Text(risk,style=MaterialTheme.typography.bodySmall,color=if(risk.startsWith("HIGH"))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)}}
+     }
+    }}}
+    item{Text("Reachability indicators are not proof of identity or vulnerability. No credentials or exploits are tested.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
    }
   }
  }
+}
+@Composable private fun EmptyAuditState(title:String,subtitle:String){
+ Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.SearchOff,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(34.dp));Text(title,fontWeight=FontWeight.Bold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)}}
 }

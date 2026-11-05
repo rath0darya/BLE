@@ -132,7 +132,7 @@ class NetworkAuditActivity:ComponentActivity() {
   }catch(_:Exception){}
  }
 
- private fun xmlValue(xml:String,tag:String):String?{
+ private fun isLocalEndpoint(url:String,expectedIp:String):Boolean=try{\n  val host=URL(url).host\n  host.isNotBlank()&&InetAddress.getAllByName(host).any{it.hostAddress==expectedIp||it.isSiteLocalAddress||it.isLinkLocalAddress}\n }catch(_:Exception){false}\n\n private fun xmlValue(xml:String,tag:String):String?{
   val escaped=Regex.escape(tag)
   return Regex("<(?:[A-Za-z0-9_-]+:)?$escaped(?:\\s[^>]*)?>(.*?)</(?:[A-Za-z0-9_-]+:)?$escaped>",setOf(RegexOption.IGNORE_CASE,RegexOption.DOT_MATCHES_ALL))
    .find(xml)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"),"")?.replace("&amp;","&")?.replace("&lt;","<")?.replace("&gt;",">")?.trim()?.takeIf{it.isNotBlank()}
@@ -199,7 +199,7 @@ class NetworkAuditActivity:ComponentActivity() {
   if(554 in open||8554 in open)risks.add("REVIEW: RTSP is reachable. Verify stream authentication and restrict access to trusted clients.")
   if(camera&&443 !in open&&8443 !in open)risks.add("REVIEW: no common HTTPS port detected; this does not prove encryption is absent.")
   if(risks.isEmpty()&&camera)risks.add("No obvious exposure found by these limited checks. Firmware and authentication remain unverified.")
-  val confidence=when{signals.any{it.contains("ONVIF")}->"High · ONVIF discovery response";554 in open||8554 in open->"High · RTSP service";camera->"Medium · camera-related port";else->"Low · network device"}
+  val confidence=when{signals.any{it.contains("ONVIF")}->"High · ONVIF discovery response";554 in open||8554 in open->"Medium · RTSP service; camera role unconfirmed";camera->"Medium · camera-related port";else->"Low · network device"}
   return LanFinding(ip,open,camera,confidence,(protocols+signals).distinct(),risks,deviceDetails[ip].orEmpty())
  }
 

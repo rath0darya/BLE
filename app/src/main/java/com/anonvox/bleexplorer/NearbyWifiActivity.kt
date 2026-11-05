@@ -23,7 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Wifi\nimport androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -72,7 +73,8 @@ class NearbyWifiActivity:ComponentActivity(){
   }
   ReportExporter.shareAll(this,"BLE Explorer nearby Wi-Fi report","ble-explorer-wifi",text,json)
  }
-\n private fun permitted():Boolean=ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
+
+ private fun permitted():Boolean=ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
  private fun locationEnabled():Boolean=try{
   val lm=getSystemService(Context.LOCATION_SERVICE) as LocationManager
   if(Build.VERSION.SDK_INT>=28)lm.isLocationEnabled else lm.isProviderEnabled(LocationManager.GPS_PROVIDER)||lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
@@ -118,7 +120,8 @@ class NearbyWifiActivity:ComponentActivity(){
      item{Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
       Text("Nearby radio discovery",fontSize=20.sp,fontWeight=FontWeight.Bold)
       Text("Scans Wi-Fi access points visible to this phone, even when they are not on your connected network. It cannot see devices connected behind those access points.")
-      Button(onClick={scanning=true;status="Requesting Wi-Fi scan…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby Wi-Fi")}\n      OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
+      Button(onClick={scanning=true;status="Requesting Wi-Fi scan…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby Wi-Fi")}
+      OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
       Text(status,style=MaterialTheme.typography.bodySmall)
       Text("Access points: ${rows.size} · CCTV-name hints: ${rows.count{it.cameraHint}}",fontWeight=FontWeight.SemiBold)
      }}}

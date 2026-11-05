@@ -127,7 +127,7 @@ class NetworkAuditActivity:ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun NetworkAuditScreen(onBack:()->Unit,onScan:(((List<LanFinding>,String,Boolean)->Unit))->Unit,onStop:()->Unit){
+@Composable private fun NetworkAuditScreen(onBack:()->Unit,onScan: ((List<LanFinding>, String, Boolean) -> Unit) -> Unit,onStop:()->Unit){
  var rows by remember{mutableStateOf(emptyList<LanFinding>())}
  var status by remember{mutableStateOf("Ready · connect to Wi-Fi and start an audit")}
  var active by remember{mutableStateOf(false)}

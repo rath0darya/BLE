@@ -6,6 +6,7 @@
 <p align="center">Discover nearby Bluetooth devices. Understand what they are. Inspect supported BLE services and authorized local-network devices.</p>
 <p align="center">
   <a href="https://github.com/rath0darya/BLE/releases">Latest APK</a> ·
+  <a href="https://github.com/users/rath0darya/packages">Packages</a> ·
   <a href="https://github.com/rath0darya/BLE/actions">Builds</a> ·
   <a href="docs/index.html">Project site</a> ·
   <a href="docs/about.html">About</a>
@@ -29,7 +30,7 @@ Download the current signed APK from [GitHub Releases](https://github.com/rath0d
 
 ## Build
 
-GitHub Actions builds Android APKs on pushes to `main`. Configure `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` to publish signed Releases and the Maven package in GitHub Packages.
+GitHub Actions builds Android APKs on pushes to `main`. Configure `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` to publish the signed APK and Maven package (`com.anonvox:ble-explorer`) in GitHub Packages.
 
 - Application ID: `com.anonvox.bleexplorer`
 - Android: API 23+

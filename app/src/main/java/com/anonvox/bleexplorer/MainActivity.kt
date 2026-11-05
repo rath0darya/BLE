@@ -53,7 +53,7 @@ private data class Device(val address:String,val name:String,val category:String
 }
 class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
- private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
+ private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var pairedUpdate:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
  private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;private var bmsUpdate:((BmsSnapshot)->Unit)?=null;private val gattReadQueue=java.util.ArrayDeque<BluetoothGattCharacteristic>();private val gattRows=mutableListOf<String>()
  private val bondReceiver=object:android.content.BroadcastReceiver(){
   override fun onReceive(context:Context?,intent:Intent?){
@@ -62,14 +62,14 @@ class MainActivity:ComponentActivity() {
    val state=intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE,BluetoothDevice.BOND_NONE)
    val address=try{remote.address}catch(_:SecurityException){return}
    synchronized(found){found[address]?.let{found[address]=it.copy(bondState=state)}}
-   runOnUiThread{update?.invoke(found.values.sortedByDescending{it.rssi})}
+   runOnUiThread{update?.invoke(found.values.sortedByDescending{it.rssi});loadPairedDevices()}
   }
  }
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
-  var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
-  update={devices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
+  var devices by remember{mutableStateOf(emptyList<Device>())};var pairedDevices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
+  update={devices=it};pairedUpdate={pairedDevices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
   try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}
-  AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},bms,{startActivity(Intent(this,NetworkAuditActivity::class.java))},{startActivity(Intent(this,NearbyWifiActivity::class.java))},{startActivity(Intent(this,NearbyWifiDirectActivity::class.java))}) }
+  AppTheme { Screen(devices,pairedDevices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},bms,{startActivity(Intent(this,NetworkAuditActivity::class.java))},{startActivity(Intent(this,NearbyWifiActivity::class.java))},{startActivity(Intent(this,NearbyWifiDirectActivity::class.java))}) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
  private fun allowed():Boolean = requiredPermissions().all{ContextCompat.checkSelfPermission(this,it)==PackageManager.PERMISSION_GRANTED}
@@ -80,7 +80,7 @@ class MainActivity:ComponentActivity() {
  private fun start(){if(active)return;try{
   val adapter=(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
   if(adapter==null){statusUpdate?.invoke(false,"Bluetooth is not supported");return};if(!adapter.isEnabled){statusUpdate?.invoke(false,"Turn on Bluetooth, then try again");return}
-  scanner=adapter.bluetoothLeScanner;if(scanner==null){statusUpdate?.invoke(false,"Bluetooth scanner unavailable");return}
+  scanner=adapter.bluetoothLeScanner;if(scanner==null){statusUpdate?.invoke(false,"Bluetooth scanner unavailable");return};loadPairedDevices()
   found.clear();update?.invoke(emptyList())
   callback=object:ScanCallback(){override fun onScanResult(type:Int,result:ScanResult){add(result)};override fun onBatchScanResults(results:MutableList<ScanResult>){results.forEach{add(it)}};override fun onScanFailed(code:Int){runOnUiThread{stop("Scan failed ($code). Try again.")}}}
   scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)
@@ -184,6 +184,22 @@ class MainActivity:ComponentActivity() {
   val text=String(value,Charsets.UTF_8).trim().trim('\u0000')
   return if(text.isNotBlank()&&text.all{it.isLetterOrDigit()||it.isWhitespace()||it in "._:/-+()"})"Text: "+text+" · HEX: "+hex else "HEX: "+hex
  }
+ private fun loadPairedDevices(){
+  if(!allowed())return
+  try{
+   val adapter=(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?:return
+   val snapshots=adapter.bondedDevices.mapNotNull{remote->
+    try{
+     val address=remote.address?:return@mapNotNull null
+     val name=remote.alias?.takeIf{it.isNotBlank()}?:remote.name?.takeIf{it.isNotBlank()}?:"Paired Bluetooth device"
+     val btClass=remote.bluetoothClass
+     val transport=when(remote.type){BluetoothDevice.DEVICE_TYPE_LE->"Bluetooth Low Energy (LE)";BluetoothDevice.DEVICE_TYPE_CLASSIC->"Bluetooth Classic (BR/EDR)";BluetoothDevice.DEVICE_TYPE_DUAL->"Dual-mode (LE + Classic BR/EDR)";else->"Unknown Bluetooth transport"}
+     Device(address,name,classifyDevice(name,emptyList(),"",""),transport,-127,System.currentTimeMillis(),System.currentTimeMillis(),null,emptyList(),"","","",emptyList(),remote.bondState,btClass?.deviceClass,btClass?.majorDeviceClass,remote.alias.orEmpty(),remote.uuids?.map{it.uuid.toString()}.orEmpty())
+    }catch(_:SecurityException){null}catch(_:Exception){null}
+   }.sortedBy{it.name.lowercase(Locale.ROOT)}
+   pairedUpdate?.invoke(snapshots)
+  }catch(_:SecurityException){pairedUpdate?.invoke(emptyList())}
+ }
  private fun pairDevice(device:Device){
   if(!allowed()){requestPermissions(requiredPermissions(),701);Toast.makeText(this,"Allow Bluetooth permissions before pairing",Toast.LENGTH_LONG).show();return}
   try{
@@ -203,7 +219,7 @@ class MainActivity:ComponentActivity() {
  private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
   startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_SUBJECT,"BLE Explorer results");putExtra(Intent.EXTRA_TEXT,csv)},"Share scan results"))
  }
- override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
+ override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;pairedUpdate=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
 }
 /** Reads Complete Local Name (0x09) and Shortened Local Name (0x08) AD structures.
  * ScanRecord.deviceName is preferred, but parsing the advertisement is a safe fallback.
@@ -280,7 +296,7 @@ private fun gattRowDescription(row:String):String=when{
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFF7DD3FC),secondary=Color(0xFFA5B4FC),background=Color(0xFF0A1020),surface=Color(0xFF121B2D),surfaceVariant=Color(0xFF202B40),onSurface=Color(0xFFF1F5F9),onSurfaceVariant=Color(0xFFB8C5D8))else lightColorScheme(primary=Color(0xFF0369A1),secondary=Color(0xFF4F46E5),background=Color(0xFFF4F7FC),surface=Color.White,surfaceVariant=Color(0xFFE8EEF7),onSurface=Color(0xFF102033),onSurfaceVariant=Color(0xFF52647B)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
+@Composable private fun Screen(devices:List<Device>,pairedDevices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
  var compact by remember{mutableStateOf(false)};var query by remember{mutableStateOf("")};var filter by remember{mutableStateOf("Any signal")};var selected by remember{mutableStateOf<Device?>(null)};var settings by remember{mutableStateOf(false)}
  val filters=listOf("Any signal","Strong","Weak","Named","Services","Recent")
  val shown=devices.filter{(it.name.contains(query,true)||it.address.contains(query,true))&&when(filter){"Strong"->it.rssi>=-68;"Weak"->it.rssi < -80;"Named"->it.name!="Unnamed device";"Services"->it.services.isNotEmpty();"Recent"->System.currentTimeMillis()-it.seen<5000;else->true}}
@@ -301,6 +317,10 @@ private fun gattRowDescription(row:String):String=when{
   item{Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically){OutlinedTextField(query,{query=it},modifier=Modifier.weight(1f),placeholder={Text("Search devices")},leadingIcon={Icon(Icons.Default.Search,null)},singleLine=true,shape=RoundedCornerShape(16.dp));FilledTonalIconButton(onClick={compact=!compact},modifier=Modifier.size(56.dp)){Icon(if(compact)Icons.Default.GridView else Icons.Default.List,"Switch layout")};FilledTonalIconButton(onClick=onShare,modifier=Modifier.size(56.dp),enabled=devices.isNotEmpty()){Icon(Icons.Default.Share,"Share results")}}}
   item{Column(verticalArrangement=Arrangement.spacedBy(7.dp)){Text("REFINE RESULTS",style=MaterialTheme.typography.labelSmall,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.onSurfaceVariant);Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){filters.forEach{f->FilterChip(selected=filter==f,onClick={filter=f},label={Text(f)})}}}}
   item{Column{Text("Nearby devices",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text("${shown.size} devices · sorted by signal",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+  if(pairedDevices.isNotEmpty()){
+   item{Column{Text("PAIRED WITH THIS PHONE",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("${pairedDevices.size} bonded devices saved by Android · tap a device to inspect it",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+   items(pairedDevices,key={"paired-"+it.address}){d->PairedDeviceCard(d){selected=d}}
+  }
   if(shown.isEmpty())item{Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surface).padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(10.dp)){Icon(Icons.Default.BluetoothSearching,null,modifier=Modifier.size(44.dp),tint=MaterialTheme.colorScheme.primary);Text(if(devices.isEmpty())"No devices found yet" else "No matching devices",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.titleMedium);Text(if(devices.isEmpty())"Tap Start scan. It stops automatically after 30 seconds." else "Try another search or filter.",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)}}
   else items(shown,key={it.address}){d->DeviceCard(d,compact){selected=d}}
   item{Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.Info,null,modifier=Modifier.size(16.dp),tint=MaterialTheme.colorScheme.onSurfaceVariant);Text("Each discovered device is labelled with its detected type. BLE broadcasts vary by device; some products remain invisible unless they advertise.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
@@ -309,6 +329,20 @@ private fun gattRowDescription(row:String):String=when{
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Scan settings")},text={Text("BLE asks for Nearby devices and Location permission before scanning. On older Android versions, Location services must also be switched on. Scans start only when you tap the button and stop after 30 seconds. Pairing is initiated only when you choose Pair securely in a device's details.")},confirmButton={TextButton(onClick={settings=false}){Text("Got it")}})
 }
 @Composable private fun Metric(label:String,value:String,icon:ImageVector,modifier:Modifier=Modifier){Column(modifier.clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha=.72f)).padding(horizontal=9.dp,vertical=11.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Icon(icon,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(17.dp));Text(value,fontWeight=FontWeight.Bold,fontSize=16.sp,maxLines=1,overflow=TextOverflow.Ellipsis);Text(label,fontSize=9.sp,letterSpacing=1.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,fontWeight=FontWeight.Bold)}}
+@Composable private fun PairedDeviceCard(d:Device,click:()->Unit){
+ Surface(Modifier.fillMaxWidth().clickable(onClick=click),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=2.dp,border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outline.copy(alpha=.18f))){
+  Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){
+   Glyph(d,42)
+   Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+    Text(d.name,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
+    Text(d.address,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(d.transport,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   }
+   Tag("PAIRED")
+   Icon(Icons.Default.ChevronRight,null)
+  }
+ }
+}
 @Composable private fun DeviceCard(d:Device,compact:Boolean,click:()->Unit){Surface(Modifier.fillMaxWidth().clickable(onClick=click),shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=3.dp,shadowElevation=if(isSystemInDarkTheme())2.dp else 7.dp,border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outline.copy(alpha=if(isSystemInDarkTheme()).28f else .18f))){
  if(compact)Row(Modifier.padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){Glyph(d,44);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){Text(d.name,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis);Text(d.address,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)};Column(horizontalAlignment=Alignment.End){Text("${d.rssi} dBm",fontWeight=FontWeight.Bold,color=d.tint,fontSize=13.sp);Text(d.quality,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Icon(Icons.Default.ChevronRight,null)}
  else Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Glyph(d,52);Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)){Text(d.name,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis);Text(if(d.name=="Unnamed device")"Name not shared in broadcast" else "Bluetooth Low Energy device",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Icon(Icons.Default.ChevronRight,null,tint=MaterialTheme.colorScheme.onSurfaceVariant)}

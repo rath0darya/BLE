@@ -1,31 +1,27 @@
 # BLE Explorer
 
-Android app for foreground Bluetooth Low Energy discovery, with an additional local Wi-Fi network and CCTV exposure audit.
+Android application for nearby Bluetooth discovery and local network security review, with a separate nearby Wi-Fi access-point scan.
 
-## Features
+## Nearby CCTV discovery — what the app can actually detect
 
-### Bluetooth
-- Manual foreground BLE scans; no background scanning.
-- Advertised device names, signal strength, services, manufacturer data and raw advertisement details.
-- Device classification, signal history, sharing and optional pairing / GATT inspection.
+- **BLE advertisements:** classifies camera/CCTV-related broadcast names and manufacturer/service data when a camera exposes them over Bluetooth LE.
+- **Nearby Wi-Fi access points:** performs an Android Wi-Fi scan and flags SSIDs containing known camera/NVR/DVR vendor or product terms. It shows BSSID, signal strength, frequency and advertised network security capabilities.
+- **Local-network audit:** performs ONVIF WS-Discovery and UPnP/SSDP discovery plus common TCP service checks on the connected Wi-Fi subnet, including HTTP(S), RTSP, FTP, Telnet and common camera/DVR ports.
 
-### Local network & CCTV audit
-- Start a manual scan of the connected Wi-Fi IPv4 /24 subnet.
-- Non-invasive ONVIF WS-Discovery and UPnP / SSDP discovery.
-- Checks common camera, DVR/NVR and network service ports, including HTTP(S), RTSP, FTP, Telnet and common vendor ports.
-- Camera candidates are labelled with a confidence reason and detected protocol evidence.
-- Security review flags potentially risky exposed services, such as Telnet, FTP, unencrypted HTTP management and reachable RTSP.
-- Results are advisory: an open port is not proof of a vulnerability, and no obvious finding is not a security certification.
+## Important detection limits
 
-## Security and privacy boundaries
-- Only scan networks you own or are explicitly authorized to assess.
-- Discovery is limited to the connected local Wi-Fi /24 subnet. It does not scan public IP ranges.
-- No password guessing, brute force, login attempts, stream viewing, exploit execution or configuration changes.
-- The app does not verify firmware CVEs, anonymous stream access, cloud exposure or device credentials. Validate those through authorized vendor administration and a proper security assessment.
-- CCTV detection is heuristic unless a device responds to ONVIF discovery. VLANs, client isolation, multicast filtering and firewalls can hide devices.
+Nearby Wi-Fi scanning lists **access points**, not the client devices connected to them. It cannot enumerate cameras connected behind a stranger's router, identify a camera using an ordinary SSID, or detect a wired camera. A camera can only be identified off-LAN when it emits a detectable signal or otherwise exposes a discoverable radio service. BLE camera classification and SSID-name matches are heuristic indicators, not proof of CCTV.
 
-## Build APKs
+Android requires Location permission and enabled Location services to expose nearby Wi-Fi scan results, and the OS may throttle scans. BLE scanning requires Bluetooth permissions and only finds devices that advertise during the scan window.
 
-Pushes to `main` and manual workflow runs build debug and release APKs with GitHub Actions. Download them from the workflow run's **Artifacts** section (`BLE-Explorer-APKs`). Builds are not published to the GitHub Releases page.
+## Protocol and security review
 
-The release build currently uses the repository's debug signing configuration. It is suitable for testing, not as a permanent production signing identity.
+The local audit can identify reachable service indicators such as HTTP, HTTPS, RTSP, ONVIF, SSDP, FTP and Telnet, and provide configuration review guidance. An open port is not proof of a vulnerability. The app does not verify firmware CVEs, credentials, anonymous stream access, cloud exposure or exploitability. “No obvious risk” is not a security certification.
+
+## Authorized use
+
+Use network scanning only on networks you own or are explicitly authorized to assess. No password guessing, brute force, login attempts, stream viewing, exploit execution or configuration changes are performed.
+
+## Build and releases
+
+GitHub Actions builds debug and release APKs for pushes to `main`. APKs are uploaded as the `BLE-Explorer-APKs` workflow artifact and attached to a versioned GitHub Release after a successful build. The release APK currently uses the repository's debug signing configuration and is intended for testing, not as a permanent production signing identity.

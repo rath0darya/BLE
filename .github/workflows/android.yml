@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: ble-android-main
   cancel-in-progress: true
@@ -33,3 +33,13 @@ jobs:
           path: downloads/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Publish versioned GitHub Release
+        if: success() && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.${{ github.run_number }}
+          name: BLE Explorer v1.1.${{ github.run_number }}
+          generate_release_notes: true
+          files: |
+            downloads/BLE-Explorer-debug.apk
+            downloads/BLE-Explorer.apk

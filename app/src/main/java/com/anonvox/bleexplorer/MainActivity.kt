@@ -189,6 +189,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
  fun named(vararg words:String)=words.any{n.contains(it)}
  return when {
   named("ev battery","ev-battery","traction battery","battery management system","battery pack","bms","lifepo","li-fe-po","lithium battery","e-scooter battery","electric scooter battery","electric vehicle battery","e-bike battery","ebike battery","inverter battery","bms_","bms-","jbd","dal y bms","jk-bms","seplos","ant bms","pace bms","scooter bms") -> "EV Batteries"
+  named("cctv","ip camera","security camera","surveillance","network camera","camera_","camera-","cam_","cam-","nvr","dvr","reolink","arlo","wyze","eufy","ring camera","hikvision","dahua","ezviz","imou","uniview","axis camera","amcrest","tapocam","tapo c","v380","yoosee","xmeye") -> "CCTV Cameras"
   named("airpods","earbuds","ear bud","headphone","headset","neckband","soundbar","speaker","galaxy buds","pixel buds","wf-","wh-1000","boAt","boat ","jbl","bose","sony audio","beats ") || has("110b","110d","110e","110f","111e","111f","1124","1130","1131") -> "Audio"
   named("iphone","ipad","android phone","samsung galaxy","galaxy s","galaxy note","pixel phone","oneplus","xiaomi","redmi","realme","vivo ","oppo ","motorola","nothing phone","huawei phone","honor phone") -> "Phones"
   named("apple watch","galaxy watch","pixel watch","fitbit","garmin","smartwatch","smart watch","fitness band","mi band","miband","fitness tracker","heart rate","wearable","watch ") || has("180d","1816","1818","1819","1822","183a") -> "Wearables"

@@ -188,7 +188,7 @@ class NetworkAuditActivity:ComponentActivity() {
  var active by remember{mutableStateOf(false)}
  var onlyCameras by remember{mutableStateOf(false)}
  val shown=rows.filter{!onlyCameras||it.camera}
- MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),background=Color(0xFF231610),surface=Color(0xFF35241F),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1))){
+ MaterialTheme(colorScheme=if(androidx.compose.foundation.isSystemInDarkTheme())darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),background=Color(0xFF231610),surface=Color(0xFF35241F),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1))else lightColorScheme(primary=Color(0xFF9D320C),secondary=Color(0xFFB8521D),background=Color(0xFFFFF7EF),surface=Color(0xFFFFFAF6),onSurface=Color(0xFF5A2D1D),onSurfaceVariant=Color(0xFF806457))){
   Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized active local network",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
     item{Column(Modifier.fillMaxWidth().background(Color(0xFF5A2D1D),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){

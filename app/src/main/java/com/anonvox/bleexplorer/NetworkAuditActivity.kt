@@ -260,7 +260,7 @@ class NetworkAuditActivity:ComponentActivity() {
     if(shown.isEmpty())item{EmptyAuditState(if(rows.isEmpty())"No scan results" else "No CCTV candidates",if(rows.isEmpty())"Start an audit on your own or administered Wi-Fi network." else "Turn off the CCTV filter to see all discovered devices.")}
     items(shown,key={it.ip}){f->Card(shape=RoundedCornerShape(16.dp),onClick={expandedIp=if(expandedIp==f.ip)null else f.ip}){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
      Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(if(expandedIp==f.ip)"Less" else "Details",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)}
-     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){AssistChip(onClick={},label={Text(f.confidence.substringBefore(" · "))});AssistChip(onClick={},label={Text("${f.ports.size} ports")})}
+     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){NetworkBadge(f.confidence.substringBefore(" · "));NetworkBadge("${f.ports.size} ports")}
      if(expandedIp==f.ip){
       HorizontalDivider()
       Text("Confidence: ${f.confidence}",style=MaterialTheme.typography.bodySmall)
@@ -278,3 +278,5 @@ class NetworkAuditActivity:ComponentActivity() {
 @Composable private fun EmptyAuditState(title:String,subtitle:String){
  Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.SearchOff,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(34.dp));Text(title,fontWeight=FontWeight.Bold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)}}
 }
+
+@Composable private fun NetworkBadge(label:String){Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.secondaryContainer){Text(label,Modifier.padding(horizontal=10.dp,vertical=5.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSecondaryContainer)}}

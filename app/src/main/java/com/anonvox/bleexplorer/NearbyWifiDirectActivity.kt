@@ -60,7 +60,7 @@ class NearbyWifiDirectActivity:ComponentActivity(){
   }
   val m=manager;val ch=channel
   if(m==null||ch==null){publish?.invoke(emptyList(),"Wi-Fi Direct is unavailable on this device.");return}
-  findings.clear();publish?.invoke(emptyList(),"Starting Wi-Fi Direct peer and UPnP service discovery…")
+  findings.clear();publish?.invoke(emptyList(),"Preparing Wi-Fi Direct UPnP discovery…")
   try{
    m.setUpnpServiceResponseListener(ch){services,device->
     val old=findings[device.deviceAddress]
@@ -69,14 +69,38 @@ class NearbyWifiDirectActivity:ComponentActivity(){
     findings[device.deviceAddress]=WifiDirectFinding(device.deviceName,device.deviceAddress,device.status.toString(),all,hint)
     runOnUiThread{publish?.invoke(findings.values.toList(),"Received "+all.size+" UPnP service entries.")}
    }
-   serviceRequest=WifiP2pUpnpServiceRequest.newInstance()
-   m.addServiceRequest(ch,serviceRequest,object:WifiP2pManager.ActionListener{override fun onSuccess(){};override fun onFailure(reason:Int){runOnUiThread{publish?.invoke(findings.values.toList(),"UPnP service request unavailable (code "+reason+").")}}})
-   m.discoverPeers(ch,object:WifiP2pManager.ActionListener{
-    override fun onSuccess(){runOnUiThread{publish?.invoke(findings.values.toList(),"Peer discovery started. Waiting for Wi-Fi Direct devices…")}}
-    override fun onFailure(reason:Int){runOnUiThread{publish?.invoke(findings.values.toList(),"Wi-Fi Direct discovery failed (code "+reason+"). Check Wi-Fi and retry.")}}
-   })
-   m.discoverServices(ch,object:WifiP2pManager.ActionListener{override fun onSuccess(){};override fun onFailure(reason:Int){runOnUiThread{publish?.invoke(findings.values.toList(),"Peer scan started; service discovery unavailable (code "+reason+").")}}})
+   beginUpnpDiscovery(m,ch,0)
+
   }catch(_:SecurityException){publish?.invoke(findings.values.toList(),"Wi-Fi permission is required.")}catch(_:Exception){publish?.invoke(findings.values.toList(),"Could not start Wi-Fi Direct discovery.")}
+ }
+ private fun beginUpnpDiscovery(m:WifiP2pManager,ch:WifiP2pManager.Channel,attempt:Int){
+  try{
+   m.clearServiceRequests(ch,object:WifiP2pManager.ActionListener{
+    override fun onSuccess(){
+     serviceRequest=WifiP2pUpnpServiceRequest.newInstance()
+     m.addServiceRequest(ch,serviceRequest,object:WifiP2pManager.ActionListener{
+      override fun onSuccess(){
+       m.discoverServices(ch,object:WifiP2pManager.ActionListener{
+        override fun onSuccess(){runOnUiThread{publish?.invoke(findings.values.toList(),"UPnP service discovery started. Waiting for nearby devices to advertise services…")}}
+        override fun onFailure(reason:Int){retryUpnpIfBusy(m,ch,attempt,reason,"UPnP service discovery unavailable")}
+       })
+      }
+      override fun onFailure(reason:Int){retryUpnpIfBusy(m,ch,attempt,reason,"UPnP service request unavailable")}
+     })
+    }
+    override fun onFailure(reason:Int){retryUpnpIfBusy(m,ch,attempt,reason,"Could not reset UPnP discovery requests")}
+   })
+  }catch(_:SecurityException){runOnUiThread{publish?.invoke(findings.values.toList(),"Wi-Fi permission is required.")}}
+  catch(_:Exception){runOnUiThread{publish?.invoke(findings.values.toList(),"Could not prepare UPnP service discovery.")}}
+ }
+ private fun retryUpnpIfBusy(m:WifiP2pManager,ch:WifiP2pManager.Channel,attempt:Int,reason:Int,message:String){
+  if(reason==WifiP2pManager.BUSY&&attempt<2){
+   runOnUiThread{publish?.invoke(findings.values.toList(),"Wi-Fi Direct is busy; retrying service discovery…")}
+   try{m.stopPeerDiscovery(ch,object:WifiP2pManager.ActionListener{
+    override fun onSuccess(){Handler(mainLooper).postDelayed({beginUpnpDiscovery(m,ch,attempt+1)},1200)}
+    override fun onFailure(stopReason:Int){Handler(mainLooper).postDelayed({beginUpnpDiscovery(m,ch,attempt+1)},1500)}
+   })}catch(_:Exception){Handler(mainLooper).postDelayed({beginUpnpDiscovery(m,ch,attempt+1)},1500)}
+  }else runOnUiThread{publish?.invoke(findings.values.toList(),message+" (code "+reason+"). Wait a moment and retry.")}
  }
  private fun requestPeers(){
   if(!allowed())return

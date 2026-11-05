@@ -5,12 +5,12 @@ Android application for nearby Bluetooth discovery and local network security re
 ## Nearby CCTV discovery — what the app can actually detect
 
 - **BLE advertisements:** classifies camera/CCTV-related broadcast names and manufacturer/service data when a camera exposes them over Bluetooth LE.
-- **Nearby Wi-Fi access points:** performs an Android Wi-Fi scan and flags SSIDs containing known camera/NVR/DVR vendor or product terms. It shows BSSID, signal strength, frequency and advertised network security capabilities.
+- **Nearby Wi-Fi access points:** performs an Android Wi-Fi scan and shows SSID, BSSID, signal strength, frequency and security capabilities. SSID matches are hints only.\n- **Nearby Wi-Fi Direct / UPnP:** independently discovers nearby Wi-Fi Direct peers and their advertised UPnP service identifiers. This can work without joining the peer device’s router network, but only when the peer exposes Wi-Fi Direct discovery/service advertisements.\n- **Local camera identification:** for reachable ONVIF devices, attempts the standard unauthenticated GetDeviceInformation operation and displays manufacturer, model, firmware and hardware details when the camera permits it. For UPnP devices, reads the advertised device description for friendly name, manufacturer and model.
 - **Local-network audit:** performs ONVIF WS-Discovery and UPnP/SSDP discovery plus common TCP service checks on the connected Wi-Fi subnet, including HTTP(S), RTSP, FTP, Telnet and common camera/DVR ports.
 
 ## Important detection limits
 
-Nearby Wi-Fi scanning lists **access points**, not the client devices connected to them. It cannot enumerate cameras connected behind a stranger's router, identify a camera using an ordinary SSID, or detect a wired camera. A camera can only be identified off-LAN when it emits a detectable signal or otherwise exposes a discoverable radio service. BLE camera classification and SSID-name matches are heuristic indicators, not proof of CCTV.
+Nearby Wi-Fi scanning lists **access points**, not the client devices connected to them. It cannot enumerate cameras connected behind a stranger's router, identify a camera using an ordinary SSID, or detect a wired camera. A camera can only be identified off-LAN when it emits a detectable BLE advertisement or exposes Wi-Fi Direct / UPnP service discovery. Many Wi-Fi cameras do not advertise over Wi-Fi Direct, so they will not appear in that mode. BLE camera classification, Wi-Fi peer names and SSID-name matches are heuristic indicators, not proof of CCTV. The app cannot enumerate clients behind an unrelated router.
 
 Android requires Location permission and enabled Location services to expose nearby Wi-Fi scan results, and the OS may throttle scans. BLE scanning requires Bluetooth permissions and only finds devices that advertise during the scan window.
 

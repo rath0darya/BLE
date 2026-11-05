@@ -45,7 +45,6 @@ afterEvaluate {
      name.set("BLE Explorer")
      description.set("Android Bluetooth discovery and authorized local-network device audit.")
      url.set("https://github.com/rath0darya/BLE")
-     licenses { license { name.set("MIT License"); url.set("https://opensource.org/licenses/MIT") } }
      scm { url.set("https://github.com/rath0darya/BLE") }
     }
    }

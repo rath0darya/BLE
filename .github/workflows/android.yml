@@ -55,7 +55,7 @@ jobs:
         if: steps.signing.outputs.release_ready != 'true'
         run: gradle --no-daemon --stacktrace assembleDebug
       - name: Publish APK to GitHub Packages
-        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
+        if: false
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +75,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Publish debug validation APK to Releases (not an install-over update)
-        if: success() && steps.signing.outputs.release_ready != 'true' && github.ref == 'refs/heads/main'
+        if: false
         uses: softprops/action-gh-release@v2
         with:
           tag_name: validation-v1.3.${{ github.run_number }}
@@ -90,7 +90,7 @@ jobs:
             Package: com.anonvox.bleexplorer
           files: downloads/BLE-Explorer-DEBUG-VALIDATION-ONLY.apk
       - name: Remove superseded app releases
-        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
+        if: false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -100,7 +100,7 @@ jobs:
             gh release delete "$tag" --yes --cleanup-tag
           done
       - name: Publish installable versioned GitHub Release
-        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
+        if: false
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.3.${{ github.run_number }}

@@ -61,6 +61,7 @@ class NetworkAuditActivity:ComponentActivity() {
   val total=last-first+1L
   val cap=4096
   val scanned=minOf(total,cap.toLong()).toInt()
+  val scanFirst=if(total>cap.toLong())(ip-cap/2L).coerceIn(first,last-cap+1L) else first
   val a=(networkAddress ushr 24) and 255
   val b=(networkAddress ushr 16) and 255
   val c=(networkAddress ushr 8) and 255

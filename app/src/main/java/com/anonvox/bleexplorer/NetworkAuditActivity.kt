@@ -205,29 +205,6 @@ class NetworkAuditActivity:ComponentActivity() {
  }
 
 
- private fun exportReport(rows:List<LanFinding>){
-  val json=org.json.JSONArray().apply{rows.forEach{f->put(org.json.JSONObject().apply{
-   put("ip_address",f.ip);put("open_tcp_ports",org.json.JSONArray(f.ports));put("possible_camera_candidate",f.camera)
-   put("confidence",f.confidence);put("protocol_indicators",org.json.JSONArray(f.protocols));put("security_review_indicators",org.json.JSONArray(f.risks))
-   put("device_details",f.details);put("interpretation","Reachability and protocol indicators only; not proof of identity or vulnerability.")
-  })}}.toString(2)
-  val text=buildString{
-   appendLine("BLE EXPLORER — AUTHORIZED LOCAL NETWORK & CCTV AUDIT")
-   appendLine("Generated: "+java.text.SimpleDateFormat("dd MMM yyyy, HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date()))
-   appendLine("Devices found: "+rows.size);appendLine("Camera candidates: "+rows.count{it.camera})
-   appendLine("Scope: active local subnet service discovery; no credential guessing, stream viewing or exploit execution.")
-   rows.forEachIndexed{index,f->
-    appendLine();appendLine("DEVICE ${index+1}: ${f.ip}")
-    appendLine("Camera candidate: "+f.camera);appendLine("Confidence: "+f.confidence)
-    appendLine("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"})
-    appendLine("Protocols: "+f.protocols.joinToString().ifBlank{"No signature"})
-    appendLine("Device details: "+f.details.ifBlank{"Not exposed"})
-    appendLine("Security review:");f.risks.forEach{appendLine("- "+it)}
-   }
-   appendLine();appendLine("Limitations: an open port is not a confirmed vulnerability. A missing HTTPS port does not prove encryption is absent. No authentication, firmware CVE or internet exposure tests were performed.")
-  }
-  ReportExporter.shareAll(this,"BLE Explorer local network and CCTV audit","ble-explorer-network-audit",text,json)
- }
 
  override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
 }

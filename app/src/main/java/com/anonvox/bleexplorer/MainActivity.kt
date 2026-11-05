@@ -219,8 +219,29 @@ class MainActivity:ComponentActivity() {
  }
  private fun disconnectBms(device:Device){if(bmsDeviceAddress!=device.address||!bmsConnected){Toast.makeText(this,"No app-managed BLE connection is active for this device",Toast.LENGTH_SHORT).show();return};try{bmsConnected=false;bmsUpdate?.invoke(BmsSnapshot("Disconnecting from "+device.name+"…",deviceAddress=device.address));bmsGatt?.disconnect()}catch(_:SecurityException){Toast.makeText(this,"Bluetooth permission is required to disconnect",Toast.LENGTH_LONG).show()}catch(_:Exception){Toast.makeText(this,"Could not disconnect this device",Toast.LENGTH_LONG).show()}}
  private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}
- private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
-  startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_SUBJECT,"BLE Explorer results");putExtra(Intent.EXTRA_TEXT,csv)},"Share scan results"))
+ private fun share(ds:List<Device>){
+  val captured=ds.map{d->mapOf("name" to d.name,"category_estimate" to d.category,"address" to d.address,"transport_reported_by_android" to d.transport,"rssi_dbm" to d.rssi,"signal_quality_estimate" to d.quality,"first_seen" to if(d.first>0)date(d.first) else null,"last_seen" to if(d.seen>0)date(d.seen) else null,"advertised_tx_power_dbm" to d.tx,"advertised_service_uuids" to d.services,"manufacturer_data_hex" to d.manufacturer,"service_data_hex" to d.serviceData,"raw_advertisement_hex" to d.raw,"rssi_history_dbm" to d.history,"bond_state" to when(d.bondState){BluetoothDevice.BOND_BONDED->"paired";BluetoothDevice.BOND_BONDING->"pairing";else->"not paired"},"identity_note" to "Category is an estimate from observed names/classes/UUIDs; exact model and firmware are not verified.")}
+  val json=org.json.JSONArray().apply{captured.forEach{put(org.json.JSONObject(it))}}.toString(2)
+  val text=buildString{
+   appendLine("BLE EXPLORER — DEVICE DISCOVERY REPORT")
+   appendLine("Generated: "+date(System.currentTimeMillis()))
+   appendLine("Devices captured: "+ds.size)
+   appendLine("Scope: passive BLE advertisements and Android-reported paired-device metadata.")
+   appendLine("Safety: identifiers and category labels are evidence-based estimates, not proof of identity or vulnerability.")
+   ds.forEachIndexed{index,d->
+    appendLine();appendLine("DEVICE ${index+1}: ${d.name}")
+    appendLine("Category estimate: ${d.category}");appendLine("Address: ${d.address}");appendLine("Transport: ${d.transport}")
+    appendLine("Signal: ${d.rssi} dBm (${d.quality})");appendLine("First seen: "+if(d.first>0)date(d.first) else "Unavailable")
+    appendLine("Last seen: "+if(d.seen>0)date(d.seen) else "Unavailable")
+    appendLine("Advertised services: "+d.services.ifEmpty{listOf("None captured")}.joinToString())
+    appendLine("Manufacturer data: "+d.manufacturer.ifBlank{"Not advertised"})
+    appendLine("Service data: "+d.serviceData.ifBlank{"Not advertised"})
+    appendLine("Raw advertisement: "+d.raw.ifBlank{"Not captured"})
+    appendLine("RSSI history: "+d.history.joinToString())
+    appendLine("Identity confidence: "+if(d.services.isNotEmpty()||d.manufacturer.isNotBlank())"Observed identifiers available; exact model unverified" else "Name/class heuristic only")
+   }
+  }
+  ReportExporter.shareAll(this,"BLE Explorer device discovery report","ble-explorer-devices",text,json)
  }
  override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;pairedUpdate=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
 }

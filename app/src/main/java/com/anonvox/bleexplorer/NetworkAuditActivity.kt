@@ -66,7 +66,7 @@ class NetworkAuditActivity:ComponentActivity() {
   val b=(networkAddress ushr 16) and 255
   val c=(networkAddress ushr 8) and 255
   val d=networkAddress and 255
-  SubnetScope("$a.$b.$c.$d/$prefix",first,first+scanned-1L,scanned,total)
+  SubnetScope("$a.$b.$c.$d/$prefix",scanFirst,scanFirst+scanned-1L,scanned,total)
  } catch(_:Exception){null} }
 
  private fun ipv4(value:Long):String = ((value ushr 24) and 255).toString()+"."+((value ushr 16) and 255)+"."+((value ushr 8) and 255)+"."+(value and 255)
@@ -76,7 +76,7 @@ class NetworkAuditActivity:ComponentActivity() {
   val scope=subnet()
   if(scope==null){update(emptyList(),"Connect to a local IPv4 network with a /16 to /30 subnet first. This audit checks reachable services on that active network.",false);return}
   running=true;evidence.clear();deviceDetails.clear()
-  val scopeNote=if(scope.totalHosts>scope.scannedHosts)" · bounded scan: first "+scope.scannedHosts+" of "+scope.totalHosts+" usable hosts" else ""
+  val scopeNote=if(scope.totalHosts>scope.scannedHosts)" · bounded scan: "+scope.scannedHosts+" hosts around this phone IP out of "+scope.totalHosts+" usable hosts" else ""
   update(emptyList(),"Scanning "+scope.cidr+" · "+scope.scannedHosts+" usable hosts queued"+scopeNote+". Local service discovery only.",true)
   Thread{
    val results=java.util.Collections.synchronizedList(mutableListOf<LanFinding>())

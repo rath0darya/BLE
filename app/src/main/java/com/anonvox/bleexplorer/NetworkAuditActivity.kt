@@ -38,7 +38,7 @@ class NetworkAuditActivity:ComponentActivity() {
  private val deviceDetails=java.util.concurrent.ConcurrentHashMap<String,String>()
  private var lock:WifiManager.MulticastLock?=null
 
- override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false})}}
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false},{rows->exportReport(rows)})}}
 
  private fun subnet():String? { return try {
   val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -178,7 +178,31 @@ class NetworkAuditActivity:ComponentActivity() {
   return LanFinding(ip,open,camera,confidence,(protocols+signals).distinct(),risks,deviceDetails[ip].orEmpty())
  }
 
- override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
+ 
+ private fun exportReport(rows:List<LanFinding>){
+  val json=org.json.JSONArray().apply{rows.forEach{f->put(org.json.JSONObject().apply{
+   put("ip_address",f.ip);put("open_tcp_ports",org.json.JSONArray(f.ports));put("possible_camera_candidate",f.camera)
+   put("confidence",f.confidence);put("protocol_indicators",org.json.JSONArray(f.protocols));put("security_review_indicators",org.json.JSONArray(f.risks))
+   put("device_details",f.details);put("interpretation","Reachability and protocol indicators only; not proof of identity or vulnerability.")
+  })}}.toString(2)
+  val text=buildString{
+   appendLine("BLE EXPLORER — AUTHORIZED LOCAL NETWORK & CCTV AUDIT")
+   appendLine("Generated: "+java.text.SimpleDateFormat("dd MMM yyyy, HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date()))
+   appendLine("Devices found: "+rows.size);appendLine("Camera candidates: "+rows.count{it.camera})
+   appendLine("Scope: active local subnet service discovery; no credential guessing, stream viewing or exploit execution.")
+   rows.forEachIndexed{index,f->
+    appendLine();appendLine("DEVICE ${index+1}: ${f.ip}")
+    appendLine("Camera candidate: "+f.camera);appendLine("Confidence: "+f.confidence)
+    appendLine("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"})
+    appendLine("Protocols: "+f.protocols.joinToString().ifBlank{"No signature"})
+    appendLine("Device details: "+f.details.ifBlank{"Not exposed"})
+    appendLine("Security review:");f.risks.forEach{appendLine("- "+it)}
+   }
+   appendLine();appendLine("Limitations: an open port is not a confirmed vulnerability. A missing HTTPS port does not prove encryption is absent. No authentication, firmware CVE or internet exposure tests were performed.")
+  }
+  ReportExporter.shareAll(this,"BLE Explorer local network and CCTV audit","ble-explorer-network-audit",text,json)
+ }
+\n override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -195,7 +219,7 @@ class NetworkAuditActivity:ComponentActivity() {
      Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFFFBDA95));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
      Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFFFE9D2),style=MaterialTheme.typography.bodyMedium)
      Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
-     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
+     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}\n     OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
      Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFE9D2))
     }}
     item{Row(verticalAlignment=Alignment.CenterVertically){Text("Show CCTV candidates only",modifier=Modifier.weight(1f));Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}

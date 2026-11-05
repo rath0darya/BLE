@@ -7,11 +7,9 @@ permissions:
   contents: write
   packages: write
   actions: write
-  pages: write
-  id-token: write
 concurrency:
   group: ble-android-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -111,23 +109,3 @@ jobs:
           overwrite_files: true
           make_latest: true
           files: downloads/BLE-Explorer.apk
-
-  deploy-pages:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload website
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs
-      - name: Deploy website
-        id: deployment
-        uses: actions/deploy-pages@v4

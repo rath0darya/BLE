@@ -27,12 +27,13 @@ import java.net.*
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
-private data class LanFinding(val ip:String,val ports:List<Int>,val camera:Boolean,val confidence:String,val protocols:List<String>,val risks:List<String>)
+private data class LanFinding(val ip:String,val ports:List<Int>,val camera:Boolean,val confidence:String,val protocols:List<String>,val risks:List<String>,val details:String)
 
 class NetworkAuditActivity:ComponentActivity() {
  @Volatile private var running=false
  private val pool=Executors.newFixedThreadPool(32)
  private val evidence=java.util.concurrent.ConcurrentHashMap<String,List<String>>()
+ private val deviceDetails=java.util.concurrent.ConcurrentHashMap<String,String>()
  private var lock:WifiManager.MulticastLock?=null
 
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false})}}
@@ -47,7 +48,7 @@ class NetworkAuditActivity:ComponentActivity() {
   if(running)return
   val base=subnet()
   if(base==null){update(emptyList(),"Connect to Wi-Fi first. This audit scans the connected Wi-Fi /24 subnet.",false);return}
-  running=true;evidence.clear()
+  running=true;evidence.clear();deviceDetails.clear()
   update(emptyList(),"Scanning local subnet "+base+".0/24. Only local service discovery is performed.",true)
   Thread{
    val results=java.util.Collections.synchronizedList(mutableListOf<LanFinding>())
@@ -87,10 +88,50 @@ class NetworkAuditActivity:ComponentActivity() {
      val packet=DatagramPacket(ByteArray(8192),8192);s.receive(packet)
      val ip=packet.address.hostAddress?:continue
      val body=String(packet.data,0,packet.length)
-     val label=if(port==3702||body.contains("NetworkVideoTransmitter",true))"ONVIF WS-Discovery" else "UPnP / SSDP"
+     val onvif=port==3702||body.contains("NetworkVideoTransmitter",true)
+     val label=if(onvif)"ONVIF WS-Discovery" else "UPnP / SSDP"
      evidence[ip]=(evidence[ip].orEmpty()+label).distinct()
+     if(onvif){
+      val xaddr=Regex("<(?:\\w+:)?XAddrs[^>]*>(.*?)</(?:\\w+:)?XAddrs>",RegexOption.IGNORE_CASE).find(body)?.groupValues?.get(1)?.trim()?.split(Regex("\\s+"))?.firstOrNull()
+      if(xaddr!=null)probeOnvifDetails(ip,xaddr)
+     }else{
+      val location=Regex("(?im)^LOCATION:\\s*(https?://[^\\s]+)").find(body)?.groupValues?.get(1)
+      if(location!=null)readDescription(ip,location)
+     }
     }catch(_:SocketTimeoutException){break}
    }
+  }catch(_:Exception){}
+ }
+
+ private fun xmlValue(xml:String,tag:String):String?{
+  val escaped=Regex.escape(tag)
+  return Regex("<(?:[A-Za-z0-9_-]+:)?$escaped(?:\\s[^>]*)?>(.*?)</(?:[A-Za-z0-9_-]+:)?$escaped>",setOf(RegexOption.IGNORE_CASE,RegexOption.DOT_MATCHES_ALL))
+   .find(xml)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"),"")?.replace("&amp;","&")?.replace("&lt;","<")?.replace("&gt;",">")?.trim()?.takeIf{it.isNotBlank()}
+ }
+ private fun readDescription(ip:String,url:String){
+  try{
+   val conn=URL(url).openConnection() as HttpURLConnection
+   conn.connectTimeout=900;conn.readTimeout=900;conn.requestMethod="GET";conn.setRequestProperty("User-Agent","BLE-Explorer/1.2")
+   val xml=conn.inputStream.bufferedReader().use{it.readText().take(256*1024)};conn.disconnect()
+   val fields=listOf("friendlyName" to "Device", "manufacturer" to "Manufacturer", "modelName" to "Model", "modelNumber" to "Model number")
+   val found=fields.mapNotNull{(tag,label)->xmlValue(xml,tag)?.let{"$label: $it"}}
+   if(found.isNotEmpty())deviceDetails[ip]=found.joinToString(" · ")
+  }catch(_:Exception){}
+ }
+ private fun probeOnvifDetails(ip:String,endpoint:String){
+  try{
+   val soap="""<?xml version="1.0" encoding="UTF-8"?><s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl"><s:Body><tds:GetDeviceInformation/></s:Body></s:Envelope>"""
+   val conn=URL(endpoint).openConnection() as HttpURLConnection
+   conn.connectTimeout=1100;conn.readTimeout=1100;conn.requestMethod="POST";conn.doOutput=true
+   conn.setRequestProperty("Content-Type","application/soap+xml; charset=utf-8")
+   conn.setRequestProperty("SOAPAction","http://www.onvif.org/ver10/device/wsdl/GetDeviceInformation")
+   conn.setRequestProperty("User-Agent","BLE-Explorer/1.2")
+   conn.outputStream.use{it.write(soap.toByteArray(Charsets.UTF_8))}
+   val xml=(if(conn.responseCode in 200..299)conn.inputStream else conn.errorStream)?.bufferedReader()?.use{it.readText().take(128*1024)}.orEmpty()
+   conn.disconnect()
+   val fields=listOf("Manufacturer" to "Manufacturer","Model" to "Model","FirmwareVersion" to "Firmware","HardwareId" to "Hardware")
+   val found=fields.mapNotNull{(tag,label)->xmlValue(xml,tag)?.let{"$label: $it"}}
+   if(found.isNotEmpty())deviceDetails[ip]=found.joinToString(" · ")
   }catch(_:Exception){}
  }
 
@@ -120,7 +161,7 @@ class NetworkAuditActivity:ComponentActivity() {
   if(camera&&443 !in open&&8443 !in open)risks.add("REVIEW: no common HTTPS port detected; this does not prove encryption is absent.")
   if(risks.isEmpty()&&camera)risks.add("No obvious exposure found by these limited checks. Firmware and authentication remain unverified.")
   val confidence=when{signals.any{it.contains("ONVIF")}->"High · ONVIF discovery response";554 in open||8554 in open->"High · RTSP service";camera->"Medium · camera-related port";else->"Low · network device"}
-  return LanFinding(ip,open,camera,confidence,(protocols+signals).distinct(),risks)
+  return LanFinding(ip,open,camera,confidence,(protocols+signals).distinct(),risks,deviceDetails[ip].orEmpty())
  }
 
  override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
@@ -148,6 +189,8 @@ class NetworkAuditActivity:ComponentActivity() {
     items(shown,key={it.ip}){f->Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
      Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=if(f.camera)Color(0xFF5EEAD4)else Color(0xFF93C5FD));Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall)}}
      Text(f.confidence,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     if(f.details.isNotBlank())Text(f.details,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold,color=Color(0xFF5EEAD4))
+     else if(f.camera)Text("Device model details were not exposed without authentication.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      Text("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"},style=MaterialTheme.typography.bodySmall)
      Text("Protocols: "+f.protocols.joinToString().ifBlank{"No protocol signature"},style=MaterialTheme.typography.bodySmall)
      Text("Security review",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium)

@@ -109,21 +109,3 @@ jobs:
           overwrite_files: true
           make_latest: true
           files: downloads/BLE-Explorer.apk
-      - name: Clear previous workflow history, keep this run
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CURRENT_RUN_ID: ${{ github.run_id }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          LATEST_SHA=$(gh api "repos/$GH_REPO/commits/main" --jq '.sha')
-          if [ "$GITHUB_SHA" != "$LATEST_SHA" ]; then
-            echo "Skipping history cleanup because a newer source commit exists."
-            exit 0
-          fi
-          gh api --paginate "repos/$GH_REPO/actions/runs?per_page=100" --jq '.workflow_runs[].id' | while read -r run_id; do
-            if [ "$run_id" != "$CURRENT_RUN_ID" ]; then
-              gh api --silent --method DELETE "repos/$GH_REPO/actions/runs/$run_id" || echo "Could not delete run $run_id"
-            fi
-          done

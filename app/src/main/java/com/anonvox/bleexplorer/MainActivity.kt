@@ -1,6 +1,6 @@
 package com.anonvox.bleexplorer
 import android.Manifest
-import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothAdapter\nimport android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -56,6 +56,32 @@ class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
  private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var pairedUpdate:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
  private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;@Volatile private var bmsDeviceAddress:String?=null;@Volatile private var bmsConnected=false;private var bmsUpdate:((BmsSnapshot)->Unit)?=null;private val gattReadQueue=java.util.ArrayDeque<BluetoothGattCharacteristic>();private val gattRows=mutableListOf<String>()
+ private val classicReceiver=object:android.content.BroadcastReceiver(){
+  override fun onReceive(context:Context?,intent:Intent?){
+   when(intent?.action){
+    BluetoothDevice.ACTION_FOUND->{
+     val remote=try{intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)}catch(_:Exception){null}?:return
+     try{
+      val address=remote.address?:return
+      val name=remote.name?.takeIf{it.isNotBlank()}?:knownNames[address]?:"Name unavailable"
+      if(name!="Name unavailable")knownNames[address]=name
+      val rssi=intent.getShortExtra(BluetoothDevice.EXTRA_RSSI,(-127).toShort()).toInt()
+      val btClass=remote.bluetoothClass
+      val now=System.currentTimeMillis()
+      synchronized(found){
+       val old=found[address]
+       val transport=when(remote.type){BluetoothDevice.DEVICE_TYPE_CLASSIC->"Bluetooth Classic (BR/EDR)";BluetoothDevice.DEVICE_TYPE_DUAL->"Dual-mode (LE + Classic BR/EDR)";BluetoothDevice.DEVICE_TYPE_LE->"Bluetooth Low Energy (LE)";else->"Bluetooth transport reported by Android"}
+       val category=classifyDevice(name,emptyList(),"","",btClass?.deviceClass,btClass?.majorDeviceClass)
+       found[address]=Device(address,name,category,transport,rssi,now,old?.first?:now,null,emptyList(),"","","",((old?.history?:emptyList())+rssi).takeLast(20),remote.bondState,btClass?.deviceClass,btClass?.majorDeviceClass,if(Build.VERSION.SDK_INT>=30)remote.alias.orEmpty() else "",emptyList())
+       val snapshot=found.values.sortedByDescending{it.rssi}
+       runOnUiThread{update?.invoke(snapshot)}
+      }
+     }catch(_:SecurityException){}
+    }
+    BluetoothAdapter.ACTION_DISCOVERY_FINISHED->runOnUiThread{if(active)statusUpdate?.invoke(true,"Bluetooth Classic discovery complete · BLE scan continues")}
+   }
+  }
+ }
  private val bondReceiver=object:android.content.BroadcastReceiver(){
   override fun onReceive(context:Context?,intent:Intent?){
    if(intent?.action!=BluetoothDevice.ACTION_BOND_STATE_CHANGED)return
@@ -69,7 +95,7 @@ class MainActivity:ComponentActivity() {
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
   var devices by remember{mutableStateOf(emptyList<Device>())};var pairedDevices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
   update={devices=it};pairedUpdate={pairedDevices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
-  try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}
+  try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}\n  try{val classicFilter=IntentFilter().apply{addAction(BluetoothDevice.ACTION_FOUND);addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)};if(Build.VERSION.SDK_INT>=33)registerReceiver(classicReceiver,classicFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(classicReceiver,classicFilter)}catch(_:Exception){}
   AppTheme { Screen(devices,pairedDevices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},{device->disconnectBms(device)},{startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))},bms,{startActivity(Intent(this,NetworkAuditActivity::class.java))},{startActivity(Intent(this,NearbyWifiActivity::class.java))},{startActivity(Intent(this,NearbyWifiDirectActivity::class.java))}) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -84,7 +110,7 @@ class MainActivity:ComponentActivity() {
   scanner=adapter.bluetoothLeScanner;if(scanner==null){statusUpdate?.invoke(false,"Bluetooth scanner unavailable");return};loadPairedDevices()
   found.clear();update?.invoke(emptyList())
   callback=object:ScanCallback(){override fun onScanResult(type:Int,result:ScanResult){add(result)};override fun onBatchScanResults(results:MutableList<ScanResult>){results.forEach{add(it)}};override fun onScanFailed(code:Int){runOnUiThread{stop("Scan failed ($code). Try again.")}}}
-  scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)
+  scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)\n  try{adapter.startDiscovery()}catch(_:SecurityException){}
   active=true;statusUpdate?.invoke(true,"Scanning nearby devices…");handler.removeCallbacks(timeout);handler.postDelayed(timeout,30000)
  }catch(_:SecurityException){statusUpdate?.invoke(false,"Bluetooth permission was denied")}catch(_:Exception){statusUpdate?.invoke(false,"Could not start scanning")}}
  private fun add(r:ScanResult){
@@ -218,7 +244,7 @@ class MainActivity:ComponentActivity() {
    catch(_:Exception){Toast.makeText(this,"Could not start Bluetooth pairing",Toast.LENGTH_LONG).show()}
  }
  private fun disconnectBms(device:Device){if(bmsDeviceAddress!=device.address||!bmsConnected){Toast.makeText(this,"No app-managed BLE connection is active for this device",Toast.LENGTH_SHORT).show();return};try{bmsConnected=false;bmsUpdate?.invoke(BmsSnapshot("Disconnecting from "+device.name+"…",deviceAddress=device.address));bmsGatt?.disconnect()}catch(_:SecurityException){Toast.makeText(this,"Bluetooth permission is required to disconnect",Toast.LENGTH_LONG).show()}catch(_:Exception){Toast.makeText(this,"Could not disconnect this device",Toast.LENGTH_LONG).show()}}
- private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}
+ private fun stop(message:String){handler.removeCallbacks(timeout);if(active){try{scanner?.stopScan(callback)}catch(_:SecurityException){};try{(getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.cancelDiscovery()}catch(_:SecurityException){};active=false};statusUpdate?.invoke(false,message)}
  private fun share(ds:List<Device>){
   val captured=ds.map{d->mapOf("name" to d.name,"category_estimate" to d.category,"address" to d.address,"transport_reported_by_android" to d.transport,"rssi_dbm" to d.rssi,"signal_quality_estimate" to d.quality,"first_seen" to if(d.first>0)date(d.first) else null,"last_seen" to if(d.seen>0)date(d.seen) else null,"advertised_tx_power_dbm" to d.tx,"advertised_service_uuids" to d.services,"manufacturer_data_hex" to d.manufacturer,"service_data_hex" to d.serviceData,"raw_advertisement_hex" to d.raw,"rssi_history_dbm" to d.history,"bond_state" to when(d.bondState){BluetoothDevice.BOND_BONDED->"paired";BluetoothDevice.BOND_BONDING->"pairing";else->"not paired"},"identity_note" to "Category is an estimate from observed names/classes/UUIDs; exact model and firmware are not verified.")}
   val json=org.json.JSONArray().apply{captured.forEach{put(org.json.JSONObject(it))}}.toString(2)
@@ -243,7 +269,7 @@ class MainActivity:ComponentActivity() {
   }
   ReportExporter.shareAll(this,"BLE Explorer device discovery report","ble-explorer-devices",text,json)
  }
- override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;pairedUpdate=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
+ override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{unregisterReceiver(classicReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;pairedUpdate=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
 }
 /** Reads Complete Local Name (0x09) and Shortened Local Name (0x08) AD structures.
  * ScanRecord.deviceName is preferred, but parsing the advertisement is a safe fallback.

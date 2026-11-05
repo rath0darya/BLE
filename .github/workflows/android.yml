@@ -20,17 +20,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Prepare persistent release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Persistent signing secrets are missing. Refusing to publish an APK signed with a temporary debug key."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-key.jks"
+          test -s "$GITHUB_WORKSPACE/release-key.jks"
+          chmod 600 "$GITHUB_WORKSPACE/release-key.jks"
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-key.jks" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=1.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
       - name: Build APKs
         run: gradle --no-daemon --stacktrace assembleDebug assembleRelease
-      - name: Prepare downloadable APKs
+      - name: Prepare downloadable APK
         run: |
           mkdir -p downloads
-          cp app/build/outputs/apk/debug/app-debug.apk downloads/BLE-Explorer-debug.apk
           cp app/build/outputs/apk/release/app-release.apk downloads/BLE-Explorer.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: BLE-Explorer-APKs
-          path: downloads/*.apk
+          name: BLE-Explorer-release
+          path: downloads/BLE-Explorer.apk
           if-no-files-found: error
           retention-days: 30
       - name: Publish versioned GitHub Release
@@ -40,6 +57,4 @@ jobs:
           tag_name: v1.1.${{ github.run_number }}
           name: BLE Explorer v1.1.${{ github.run_number }}
           generate_release_notes: true
-          files: |
-            downloads/BLE-Explorer-debug.apk
-            downloads/BLE-Explorer.apk
+          files: downloads/BLE-Explorer.apk

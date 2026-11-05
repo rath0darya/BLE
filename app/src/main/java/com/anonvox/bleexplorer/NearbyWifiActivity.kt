@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private data class WifiSignal(val ssid:String,val bssid:String,val rssi:Int,val frequency:Int,val security:String,val cameraHint:Boolean)
+private data class WifiSignal(val ssid:String,val bssid:String,val rssi:Int,val frequency:Int,val security:String,val cameraHint:Boolean,val band:String,val channel:Int?,val securityAssessment:String)
 
 class NearbyWifiActivity:ComponentActivity(){
  private val handler=Handler(Looper.getMainLooper())
@@ -57,7 +57,7 @@ class NearbyWifiActivity:ComponentActivity(){
  private fun exportReport(rows:List<WifiSignal>){
   val json=org.json.JSONArray().apply{rows.forEach{r->put(org.json.JSONObject().apply{
    put("ssid",r.ssid);put("bssid",r.bssid);put("rssi_dbm",r.rssi);put("frequency_mhz",r.frequency);put("security_capabilities",r.security)
-   put("camera_name_hint",r.cameraHint);put("identity_note","SSID text matching is only a naming hint, not evidence that CCTV is present.")
+   put("camera_name_hint",r.cameraHint);put("band",r.band);put("channel",r.channel);put("security_assessment",r.securityAssessment);put("identity_note","SSID text matching is only a naming hint, not evidence that CCTV is present.")
   })}}.toString(2)
   val text=buildString{
    appendLine("BLE EXPLORER — NEARBY WI-FI ACCESS POINT REPORT")
@@ -67,9 +67,9 @@ class NearbyWifiActivity:ComponentActivity(){
    rows.forEachIndexed{index,r->
     appendLine();appendLine("ACCESS POINT ${index+1}: ${r.ssid}")
     appendLine("BSSID: "+r.bssid);appendLine("Signal: "+r.rssi+" dBm");appendLine("Frequency: "+r.frequency+" MHz")
-    appendLine("Security capabilities: "+r.security);appendLine("Camera-name hint: "+r.cameraHint)
+    appendLine("Security capabilities: "+r.security);appendLine("Security assessment: "+r.securityAssessment);appendLine("Band / channel: "+r.band+" / "+(r.channel?.toString()?: "Unavailable"));appendLine("Camera-name hint: "+r.cameraHint)
    }
-   appendLine();appendLine("Limitations: SSID hints do not confirm a camera. Wi-Fi scan results are subject to Android permissions and scan throttling.")
+   appendLine();appendLine("Limitations: SSID hints do not confirm a camera. Security assessment is based on broadcast capability flags only; it does not test passwords, router configuration or encryption implementation. Wi-Fi scan results are subject to Android permissions and scan throttling.")
   }
   ReportExporter.shareAll(this,"BLE Explorer nearby Wi-Fi report","ble-explorer-wifi",text,json)
  }
@@ -99,7 +99,10 @@ class NearbyWifiActivity:ComponentActivity(){
     val name=s.ifBlank{"Hidden network"}
     val lower=s.lowercase()
     val hint=listOf("cctv","camera","cam-","cam_","ipcam","ipc-","nvr","dvr","hikvision","dahua","ezviz","imou","reolink","v380","yoosee","xmeye","tapocam","tapo").any{lower.contains(it)}
-    WifiSignal(name,r.BSSID.orEmpty(),r.level,r.frequency,r.capabilities.orEmpty(),hint)
+    WifiSignal(name,r.BSSID.orEmpty(),r.level,r.frequency,r.capabilities.orEmpty(),hint,
+     when(r.frequency){in 2400..2500->"2.4 GHz";in 4900..5900->"5 GHz";in 5950..7125->"6 GHz";else->"Unknown band"},
+     when(r.frequency){2412,2417,2422,2427,2432,2437,2442,2447,2452,2457,2462,2467,2472->(r.frequency-2407)/5;2484->14;in 5000..5900->(r.frequency-5000)/5;in 5950..7125->(r.frequency-5950)/5;else->null},
+     when{r.capabilities.contains("WEP",true)->"Weak · WEP";r.capabilities.contains("SAE",true)||r.capabilities.contains("WPA3",true)->"Strong · WPA3";r.capabilities.contains("WPA2",true)->"Good · WPA2";r.capabilities.contains("EAP",true)->"Enterprise · EAP";r.capabilities.contains("WPA",true)->"Legacy · WPA";else->"Open / unknown · verify security"})
    }.distinctBy{it.bssid}.sortedByDescending{it.rssi}
    latest=list
    runOnUiThread{refreshAction?.invoke()}
@@ -129,8 +132,9 @@ class NearbyWifiActivity:ComponentActivity(){
      items(rows,key={it.bssid}){r->Card(shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
       Row(verticalAlignment=Alignment.CenterVertically){Icon(if(r.cameraHint)Icons.Default.CameraAlt else Icons.Default.Wifi,null);Spacer(Modifier.width(8.dp));Text(r.ssid,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(r.cameraHint)Text("CAMERA HINT",color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelSmall)}
       Text("BSSID: ${r.bssid}",style=MaterialTheme.typography.bodySmall)
-      Text("Signal: ${r.rssi} dBm · Frequency: ${r.frequency} MHz",style=MaterialTheme.typography.bodySmall)
+      Text("Signal: ${r.rssi} dBm · Frequency: ${r.frequency} MHz · ${r.band}"+(r.channel?.let{" · Channel $it"}?:""),style=MaterialTheme.typography.bodySmall)
       Text("Security: ${r.security.ifBlank{"Unknown"}}",style=MaterialTheme.typography.bodySmall)
+      Text("Assessment: ${r.securityAssessment}",style=MaterialTheme.typography.bodySmall,color=if(r.securityAssessment.startsWith("Weak")||r.securityAssessment.startsWith("Open"))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
       if(r.cameraHint)Text("The network name contains a camera-related term. This is only a clue, not confirmation that CCTV is present.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
      }}}
      item{Text("Important: Wi-Fi scans reveal nearby access points, not the phones/cameras connected to them. A camera using an ordinary router SSID or wired Ethernet cannot be identified this way. Android also restricts scan frequency and results.",style=MaterialTheme.typography.labelSmall)}

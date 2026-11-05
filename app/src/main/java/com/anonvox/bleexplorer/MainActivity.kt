@@ -493,69 +493,86 @@ private fun gattRowDescription(row:String):String=when{
 @Composable private fun Glyph(d:Device,size:Int){val palettes=listOf(listOf(Color(0xFFB8521D),Color(0xFFDAA96A)),listOf(Color(0xFF9D320C),Color(0xFF5A2D1D)),listOf(Color(0xFF94748D),Color(0xFFDAA96A)));val glyph=when(d.category){ "TVs"->Icons.Default.Tv; "Remotes"->Icons.Default.SettingsRemote; "EV Vehicles","Automotive"->Icons.Default.DirectionsCar; "CCTV Cameras"->Icons.Default.CameraAlt; "Audio"->Icons.Default.Headphones; "Phones"->Icons.Default.Smartphone; "Wearables"->Icons.Default.Watch; "Trackers"->Icons.Default.LocationOn; "Smart Home"->Icons.Default.Lightbulb; "Input Devices"->Icons.Default.Keyboard; "Computers"->Icons.Default.Laptop; "Printers"->Icons.Default.Print; "Medical"->Icons.Default.Favorite; "EV Batteries","Batteries"->Icons.Default.BatteryChargingFull; "Networking"->Icons.Default.Router; "Game Controllers"->Icons.Default.SportsEsports; else->Icons.Default.DevicesOther };Box(Modifier.size(size.dp).clip(RoundedCornerShape(17.dp)).background(Brush.linearGradient(palettes[kotlin.math.abs(d.name.hashCode()%palettes.size)])),contentAlignment=Alignment.Center){Icon(glyph,null,tint=Color.White,modifier=Modifier.size((size*.56).dp))}}
 @Composable private fun Tag(s:String){Text(s,Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal=8.dp,vertical=5.dp),fontSize=9.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun DeviceSheet(d:Device,onPair:()->Unit,onConnectBms:()->Unit,onDisconnectBms:()->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,close:()->Unit){val deviceBms=if(bms.deviceAddress==d.address)bms else BmsSnapshot();ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=20.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
- Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){Glyph(d,58);Column(Modifier.weight(1f)){Text(d.name,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text("${if(d.category=="Unknown")"Unclassified device" else d.category} · Detected Bluetooth broadcast",color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall)}}
- when { deviceBms.connected&&deviceBms.deviceAddress==d.address -> Button(onClick=onDisconnectBms,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(15.dp),colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error)){Icon(Icons.Default.BluetoothDisabled,null);Spacer(Modifier.width(8.dp));Text("Disconnect",fontWeight=FontWeight.Bold)}; d.bondState==BluetoothDevice.BOND_BONDED -> Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedButton(onClick={},enabled=false,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(15.dp)){Icon(Icons.Default.CheckCircle,null);Spacer(Modifier.width(8.dp));Text("Paired",fontWeight=FontWeight.Bold)};TextButton(onClick=onOpenBluetoothSettings,modifier=Modifier.align(Alignment.CenterHorizontally)){Text("Manage connection in Bluetooth settings")}}; d.bondState==BluetoothDevice.BOND_BONDING -> OutlinedButton(onClick={},enabled=false,modifier=Modifier.fillMaxWidth().height(50.dp)){Text("Pairing in progress…")}; else -> Button(onClick=onPair,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(15.dp)){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(8.dp));Text("Pair securely",fontWeight=FontWeight.Bold)} }
- Text("PAIRING FORMAT & COMPATIBILITY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Detail("Detected Bluetooth transport",d.transport)
- Detail("Pairing protocol","BLE devices use SMP when pairing is supported. Classic Bluetooth uses BR/EDR pairing.")
- Detail("Possible pairing methods","Just Works, Passkey Entry, Numeric Comparison or Out-of-Band (OOB) — selected during pairing based on both devices.")
- Detail("LE Secure Connections","Not confirmed by scan. If both devices support it, BLE pairing can use ECDH P-256.")
- Detail("Pairing availability","Not guaranteed by discovery. Some devices only broadcast and do not accept pairing.")
- if(d.rssi>-127)Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("SIGNAL","${d.rssi} dBm",Icons.Default.SignalCellularAlt,Modifier.weight(1f));Metric("QUALITY",d.quality,Icons.Default.CheckCircle,Modifier.weight(1f))}else Text("Signal strength will appear after this device is observed in a live scan.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- Text("GATT DEVICE INSPECTION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
-  Detail("Connection and discovery status",deviceBms.status+" — GATT is the Bluetooth Low Energy data interface used by many sensors and smart devices")
-  if(d.transport.contains("Low Energy")||d.transport.contains("Dual-mode"))Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & inspect device services")}else Text("GATT inspection is not available for a Classic-only or unidentified transport. Classic Bluetooth uses different profiles (such as audio, HID or serial) and does not expose BLE GATT services.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-  if(deviceBms.characteristics.isNotEmpty()){
-   Text("Discovered GATT services and characteristics",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall)
-   deviceBms.characteristics.forEach{row->Detail(gattRowTitle(row),gattRowDescription(row))}
-  }else Text("No GATT service data loaded yet. Connect to a BLE device to ask it for its public service and characteristic list. Some devices require authentication or do not allow connections.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- }
- if(d.category=="EV Batteries"||d.category=="Batteries"){
-  Text("EV BATTERY · BMS MONITOR",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
-  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
-   Text(deviceBms.status,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold)
-   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-    Metric("BATTERY LEVEL",deviceBms.batteryLevel?.let{it.toString()+"%"}?:"—",Icons.Default.BatteryFull,Modifier.weight(1f))
-    Metric("GATT SERVICES",deviceBms.characteristics.count{it.startsWith("SERVICE")}.toString(),Icons.Default.SettingsBluetooth,Modifier.weight(1f))
+@Composable private fun DeviceSheet(d:Device,onPair:()->Unit,onConnectBms:()->Unit,onDisconnectBms:()->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,close:()->Unit){
+ val deviceBms=if(bms.deviceAddress==d.address)bms else BmsSnapshot()
+ ModalBottomSheet(onDismissRequest=close,containerColor=MaterialTheme.colorScheme.surface){
+  Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=18.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+    Glyph(d,54)
+    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+     Text(d.name,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
+     Text(d.category+" · "+d.transport,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    Text(if(d.bondState==BluetoothDevice.BOND_BONDED)"PAIRED" else "SEEN",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
    }
-   Text("LIVE TELEMETRY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
-   listOf("Pack voltage","Charge / discharge current","State of charge (SOC)","State of health (SOH)","Remaining / full capacity","Cell voltage min / max","Cell voltage difference","Cell-by-cell voltages","Battery temperature sensors","Charge / discharge MOSFET","Cycle count","Protection & fault alarms").forEach{label->Detail(label,"Not exposed by this device's currently decoded GATT data")}
-   Text("The standard Bluetooth Battery Service can provide a percentage only. Pack and cell telemetry requires a supported BMS vendor protocol or documented GATT characteristics. Raw service and characteristic UUIDs below help identify compatible hardware.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   if(deviceBms.characteristics.isNotEmpty()){Text("DISCOVERED GATT CHARACTERISTICS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall);deviceBms.characteristics.take(60).forEach{Text(it,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    Metric("SIGNAL",if(d.rssi>-127)"${d.rssi} dBm" else "—",Icons.Default.SignalCellularAlt,Modifier.weight(1f))
+    Metric("QUALITY",if(d.rssi>-127)d.quality else "Unknown",Icons.Default.CheckCircle,Modifier.weight(1f))
+   }
+   when{
+    deviceBms.connected&&deviceBms.deviceAddress==d.address->Button(onClick=onDisconnectBms,modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error)){Icon(Icons.Default.BluetoothDisabled,null);Spacer(Modifier.width(7.dp));Text("Disconnect")}
+    d.bondState==BluetoothDevice.BOND_BONDED->OutlinedButton(onClick=onOpenBluetoothSettings,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.SettingsBluetooth,null);Spacer(Modifier.width(7.dp));Text("Manage Bluetooth connection")}
+    d.bondState==BluetoothDevice.BOND_BONDING->OutlinedButton(onClick={},enabled=false,modifier=Modifier.fillMaxWidth()){Text("Pairing in progress")}
+    else->Button(onClick=onPair,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Lock,null);Spacer(Modifier.width(7.dp));Text("Pair device")}
+   }
+   InspectorSection("Connection & pairing",if(deviceBms.connected)"Connected" else if(d.bondState==BluetoothDevice.BOND_BONDED)"Paired with this phone" else "Not paired"){
+    Detail("Bluetooth transport",d.transport)
+    Detail("Pairing status",when(d.bondState){BluetoothDevice.BOND_BONDED->"Paired";BluetoothDevice.BOND_BONDING->"Pairing in progress";else->"Not paired"})
+    Detail("Pairing method","Negotiated by Android and the device during pairing; not identifiable from a passive scan.")
+    Detail("Secure Connections","Not confirmed by scan. Requires support from both devices.")
+   }
+   InspectorSection("GATT service inspector",deviceBms.status,d.transport.contains("Low Energy")||d.transport.contains("Dual-mode")){
+    Text(deviceBms.status,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    if(d.transport.contains("Low Energy")||d.transport.contains("Dual-mode"))Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & inspect services")}
+    if(deviceBms.characteristics.isNotEmpty())deviceBms.characteristics.take(60).forEach{row->Detail(gattRowTitle(row),gattRowDescription(row))}
+    else Text("No GATT data loaded. Connect to a BLE device to request its services.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   }
+   if(d.category=="EV Batteries"||d.category=="Batteries")InspectorSection("Battery monitor",deviceBms.batteryLevel?.let{"Battery ${it}%"}?:deviceBms.status){
+    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){Metric("BATTERY",deviceBms.batteryLevel?.let{"${it}%"}?:"—",Icons.Default.BatteryFull,Modifier.weight(1f));Metric("SERVICES",deviceBms.characteristics.count{it.startsWith("SERVICE")}.toString(),Icons.Default.SettingsBluetooth,Modifier.weight(1f))}
+    listOf("Pack voltage","Charge / discharge current","SOC / SOH","Cell voltages","Temperature","Cycle count","Protection alarms").forEach{Detail(it,"Not exposed by the decoded GATT data")}
+   }
+   InspectorSection("Signal history","${d.history.size} readings",d.history.isNotEmpty()){SignalHistory(d.history,d.tint)}
+   InspectorSection("Evidence & identification",if(d.category=="Unknown")"Unclassified" else "Estimated: ${d.category}"){
+    Detail("Identity confidence",when{d.category=="Unknown"->"Unclassified · no reliable category evidence";d.services.isNotEmpty()||d.manufacturer.isNotBlank()||d.serviceData.isNotBlank()->"Evidence-backed category estimate";else->"Name/class heuristic only · model not verified"})
+    Detail("Name evidence",if(d.name=="Name unavailable")"No advertised or cached name" else "Name from advertisement or Android cache · not verified manufacturer/model")
+    Detail("Transport evidence",d.transport)
+    Detail("Advertisement",if(d.raw.isBlank())"Not captured" else "${d.raw.split(" ").size} bytes captured (maximum 64)")
+    Detail("Manufacturer data",d.manufacturer.ifBlank{"Not advertised"})
+    Detail("Service UUIDs",d.services.ifEmpty{listOf("Not advertised")}.joinToString("\n"))
+    Detail("Service data",d.serviceData.ifBlank{"Not advertised"})
+    Detail("Model / firmware / serial","Not exposed by this advertisement. Requires a documented or authenticated device protocol.")
+   }
+   InspectorSection("Device information",d.address){
+    Detail("Bluetooth address",d.address)
+    Detail("Alias",d.alias.ifBlank{"Not provided"})
+    Detail("Device class",d.deviceClass?.let{bluetoothClassName(it)+" · 0x"+it.toString(16).uppercase(Locale.ROOT)}?:"Not reported")
+    Detail("Major class",d.majorDeviceClass?.let{majorBluetoothClassName(it)}?:"Not reported")
+    Detail("Cached service UUIDs",d.cachedUuids.ifEmpty{listOf("Not available")}.joinToString("\n"))
+    Detail("First detected",if(d.first>0)date(d.first) else "Not recorded")
+    Detail("Last detected",if(d.seen>0)date(d.seen) else "Not recorded")
+    Detail("Advertised TX power",d.tx?.let{"${it} dBm"}?:"Not provided")
+    Detail("Broadcast bytes",d.raw.ifBlank{"Not available"})
+   }
+   InspectorSection("Pairing security","Android negotiation details"){
+    Detail("Bonding support","Unknown until pairing is attempted.")
+    Detail("Negotiated security","Available only after the pairing exchange.")
+   }
+   OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close inspector")}
   }
  }
- Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary);if(d.history.isNotEmpty())SignalHistory(d.history,d.tint)else Text("No signal samples recorded for this paired-only device.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- Text("DEVICE EVIDENCE & IDENTIFICATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
-  Text("Evidence summary",fontWeight=FontWeight.SemiBold)
-  Detail("Identity confidence",when{d.category=="Unknown"->"Unclassified · no reliable category evidence";d.services.isNotEmpty()||d.manufacturer.isNotBlank()||d.serviceData.isNotBlank()->"Evidence-backed category estimate · inspect the raw identifiers below";else->"Name/class heuristic only · product model is not verified"})
-  Detail("Name evidence",if(d.name=="Name unavailable")"No name was included in the observed advertisement or available Android cache" else "Name reported by the Bluetooth advertisement or Android device cache · not a verified manufacturer/model")
-  Detail("Transport evidence",d.transport+" · reported by Android Bluetooth APIs")
-  Detail("Advertisement evidence",if(d.raw.isBlank())"No advertisement payload captured" else "Raw advertisement payload captured · ${d.raw.split(" ").size} bytes shown (maximum 64)")
-  Detail("Manufacturer evidence",if(d.manufacturer.isBlank())"No manufacturer-specific data advertised" else "Manufacturer-specific data received · company identity is not decoded unless the payload identifies it")
-  Detail("Service evidence",if(d.services.isEmpty())"No service UUIDs were advertised in the captured packet" else "${d.services.size} service UUID(s) advertised · UUID presence does not prove every service is connectable")
-  Detail("Signal evidence",if(d.history.isEmpty())"No live RSSI samples captured" else "${d.history.size} RSSI sample(s) · latest ${d.rssi} dBm · signal varies with distance, obstacles and antenna")
-  Detail("Product model / firmware / serial", "Not exposed by the captured Bluetooth advertisement. These values require a documented device protocol or an authenticated device information service.")
-  Detail("Network IP / MAC / open ports", "Not available from BLE scanning. Run the separate authorized local-network audit for reachable IP devices.")
+}
+@Composable private fun InspectorSection(title:String,summary:String,initiallyExpanded:Boolean=false,content:@Composable ColumnScope.()->Unit){
+ var expanded by remember(title){mutableStateOf(initiallyExpanded)}
+ Card(shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.42f))){
+  Column(Modifier.fillMaxWidth().padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+   Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)){Text(title,fontWeight=FontWeight.SemiBold);Text(summary,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)}
+    IconButton(onClick={expanded=!expanded}){Icon(if(expanded)Icons.Default.ExpandLess else Icons.Default.ExpandMore,if(expanded)"Collapse" else "Expand")}
+   }
+   if(expanded)content()
+  }
  }
- Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Detail("Detected category",d.category+" — inferred from the advertised name and Bluetooth service identifiers; not a guaranteed product identity")
- Detail("Bluetooth pairing status",when(d.bondState){BluetoothDevice.BOND_BONDED->"Paired (bonded) with this phone";BluetoothDevice.BOND_BONDING->"Pairing in progress";else->"Not paired / no bond recorded"})
- Detail("Bluetooth address",d.address+" — hardware or privacy-randomized radio address reported by Android")
- Detail("Device alias",d.alias.ifBlank{"Not provided by the device or Android"})
- Detail("Bluetooth device class",d.deviceClass?.let{bluetoothClassName(it)+" (code 0x"+it.toString(16).uppercase(Locale.ROOT)+")"}?:"Not reported")
- Detail("Bluetooth major class",d.majorDeviceClass?.let{majorBluetoothClassName(it)+" (code 0x"+it.toString(16).uppercase(Locale.ROOT)+")"}?:"Not reported")
- Detail("Cached Bluetooth service UUIDs",d.cachedUuids.ifEmpty{listOf("No cached Classic SDP UUIDs available; BLE GATT services are listed after connecting")}.joinToString("\n"))
- Detail("First detected",if(d.first>0)date(d.first) else "Not recorded for a paired-only device");Detail("Last detected",if(d.seen>0)date(d.seen) else "Not recorded for a paired-only device");Detail("Signal readings",if(d.history.isNotEmpty())"${d.history.size} captured in this scan" else "No signal readings collected");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No service UUIDs advertised")}.joinToString("\n"));Detail("Manufacturer-specific advertisement data",d.manufacturer.ifBlank{"Not advertised"});Detail("Service data",d.serviceData.ifBlank{"Not advertised"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
- Text("PAIRING SECURITY DETAILS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Detail("Bonding support","Unknown until Android attempts pairing and the device responds.")
- Detail("Negotiated security level","Available only after the pairing exchange; this scan cannot determine it.")
- Text("A BLE scan cannot discover Classic-only devices. Their pairing format can only be shown after Classic discovery or connection. Transport detection does not guarantee that a device accepts pairing.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- Text("BLE does not measure exact distance. Signal strength is only a rough clue to proximity.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- OutlinedButton(onClick=close,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Close,null);Spacer(Modifier.width(7.dp));Text("Close details")}
-}}}
+}
 @Composable private fun Detail(label:String,value:String){Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.55f)).padding(12.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(label,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(value,style=MaterialTheme.typography.bodyMedium,fontWeight=FontWeight.Medium)}}
 private fun date(t:Long)=SimpleDateFormat("dd MMM yyyy, HH:mm:ss",Locale.getDefault()).format(Date(t))
 private fun ago(t:Long):String{val s=((System.currentTimeMillis()-t).coerceAtLeast(0L))/1000;return when{s<2->"NOW";s<60->"${s}s AGO";else->"${s/60}m AGO"}}

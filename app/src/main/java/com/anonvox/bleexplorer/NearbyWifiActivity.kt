@@ -46,7 +46,7 @@ class NearbyWifiActivity:ComponentActivity(){
   setContent{NearbyWifiScreen(onBack={finish()},onScan={scan()},onStatus={refreshAction=it})}
   try{
    val filter=IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
-   if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,filter,Context.RECEIVER_NOT_EXPORTED) else @Suppress("DEPRECATION") registerReceiver(receiver,filter)
+   if(Build.VERSION.SDK_INT>=33){registerReceiver(receiver,filter,Context.RECEIVER_NOT_EXPORTED)} else { @Suppress("DEPRECATION") registerReceiver(receiver,filter) }
    receiverRegistered=true
   }catch(_:Exception){}
  }
@@ -77,8 +77,8 @@ class NearbyWifiActivity:ComponentActivity(){
     val hint=listOf("cctv","camera","cam-","cam_","ipcam","ipc-","nvr","dvr","hikvision","dahua","ezviz","imou","reolink","v380","yoosee","xmeye","tapocam","tapo").any{lower.contains(it)}
     WifiSignal(name,r.BSSID.orEmpty(),r.level,r.frequency,r.capabilities.orEmpty(),hint)
    }.distinctBy{it.bssid}.sortedByDescending{it.rssi}
-   runOnUiThread{refreshAction?.invoke()}
    latest=list
+   runOnUiThread{refreshAction?.invoke()}
   }catch(_:SecurityException){}catch(_:Exception){}
  }
  @Volatile private var latest:List<WifiSignal> = emptyList()

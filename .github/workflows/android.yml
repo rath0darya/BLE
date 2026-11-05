@@ -46,6 +46,10 @@ jobs:
           fi
       - name: Build signed release and debug APKs
         if: steps.signing.outputs.release_ready == 'true'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle --no-daemon --stacktrace assembleDebug assembleRelease
       - name: Build debug validation APK only
         if: steps.signing.outputs.release_ready != 'true'

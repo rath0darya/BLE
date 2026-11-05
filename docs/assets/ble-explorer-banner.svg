@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+<title id="title">BLE Explorer</title><desc id="desc">Bluetooth discovery across phones, televisions, remotes, vehicles and cameras.</desc>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#241612"/><stop offset=".55" stop-color="#71331f"/><stop offset="1" stop-color="#c36b32"/></linearGradient><linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbda95"/><stop offset="1" stop-color="#daa96a"/></linearGradient></defs>
+<rect width="1200" height="360" rx="34" fill="url(#bg)"/>
+<circle cx="1040" cy="70" r="170" fill="#fbda95" opacity=".09"/><circle cx="1110" cy="320" r="180" fill="#94748d" opacity=".18"/><circle cx="850" cy="350" r="140" fill="#fbda95" opacity=".07"/>
+<g fill="#fff7ef" font-family="Inter,Arial,sans-serif"><text x="72" y="126" font-size="23" letter-spacing="5" opacity=".78">DISCOVER · IDENTIFY · INSPECT</text><text x="68" y="205" font-size="72" font-weight="800">BLE Explorer</text><text x="72" y="252" font-size="25" opacity=".84">Your nearby device intelligence companion</text><text x="72" y="304" font-size="16" opacity=".65">Bluetooth LE · GATT insights · Network discovery</text></g>
+<g transform="translate(820 88)" stroke="#fff7ef" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+<rect x="10" y="0" width="100" height="66" rx="9"/><path d="M42 78h36m-18-12v12"/><rect x="145" y="4" width="36" height="96" rx="11"/><circle cx="163" cy="21" r="3" fill="#fff7ef"/><circle cx="163" cy="79" r="4" fill="#fff7ef"/>
+<path d="M252 48c-26-27-26-27-52 0m-2 0c18-18 18-18 36 0m-36 0c18 18 18 18 36 0m-36 0c26 27 26 27 52 0" stroke="url(#gold)"/>
+<circle cx="267" cy="48" r="8" fill="#fbda95" stroke="none"/>
+<path d="M310 33h48a12 12 0 0 1 12 12v25h-72V45a12 12 0 0 1 12-12zM304 70l-10 16h80l-10-16" />
+<circle cx="334" cy="50" r="11" stroke="url(#gold)"/>
+</g>
+</svg>

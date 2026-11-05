@@ -5,6 +5,7 @@ on:
     branches: [main]
 permissions:
   contents: write
+  packages: write
   actions: write
 concurrency:
   group: ble-android-main
@@ -31,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-          echo "VERSION_NAME=1.2.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=1.3.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-key.jks"
             test -s "$GITHUB_WORKSPACE/release-key.jks"
@@ -49,6 +50,12 @@ jobs:
       - name: Build debug validation APK only
         if: steps.signing.outputs.release_ready != 'true'
         run: gradle --no-daemon --stacktrace assembleDebug
+      - name: Publish APK to GitHub Packages
+        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gradle --no-daemon publishReleaseApkPublicationToGitHubPackagesRepository
       - name: Prepare downloadable APK
         run: |
           mkdir -p downloads
@@ -63,13 +70,25 @@ jobs:
           path: downloads/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Remove superseded app releases
+        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            gh release delete "$tag" --yes --cleanup-tag
+          done
       - name: Publish installable versioned GitHub Release
         if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.${{ github.run_number }}
-          name: BLE Explorer v1.2.${{ github.run_number }}
-          generate_release_notes: true
+          tag_name: v1.3.${{ github.run_number }}
+          name: BLE Explorer v1.3.${{ github.run_number }}
+          body: "BLE Explorer Android app · v1.3.${{ github.run_number }} · Signed APK · com.anonvox.bleexplorer"
+          overwrite_files: true
+          make_latest: true
           files: downloads/BLE-Explorer.apk
       - name: Clear previous workflow history, keep this run
         if: always()

@@ -70,6 +70,21 @@ jobs:
           path: downloads/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Publish debug validation APK to Releases (not an install-over update)
+        if: success() && steps.signing.outputs.release_ready != 'true' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: validation-v1.3.${{ github.run_number }}
+          name: BLE Explorer v1.3.${{ github.run_number }} — Debug validation
+          prerelease: true
+          make_latest: false
+          body: |
+            **DEBUG VALIDATION BUILD — NOT A SIGNED PRODUCTION RELEASE**
+
+            This APK is published so the latest build is available on the Releases page while persistent signing credentials are unavailable.
+            It is signed with the temporary GitHub Actions debug key and is intended for fresh-install testing only. It cannot reliably update an existing installation and must not replace the signed production APK.
+            Package: com.anonvox.bleexplorer
+          files: downloads/BLE-Explorer-DEBUG-VALIDATION-ONLY.apk
       - name: Remove superseded app releases
         if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
         env:

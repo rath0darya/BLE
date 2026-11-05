@@ -24,4 +24,4 @@ Use network scanning only on networks you own or are explicitly authorized to as
 
 ## Build and releases
 
-GitHub Actions builds debug and release APKs for pushes to `main`. APKs are uploaded as the `BLE-Explorer-APKs` workflow artifact and attached to a versioned GitHub Release after a successful build. The release APK currently uses the repository's debug signing configuration and is intended for testing, not as a permanent production signing identity.
+GitHub Actions builds the debug and release variants for pushes to `main`. The installable release APK is signed only with the persistent keystore supplied through the `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` repository Actions secrets. If any secret is missing, the release job fails closed and does not publish a debug-signed substitute. The Android application ID remains `com.anonvox.bleexplorer`; the version code increases with each workflow run. Only the persistent-key-signed `BLE-Explorer.apk` is attached to GitHub Releases. Do not change or replace the persistent keystore: Android requires the same signing certificate to install updates over an existing installation.

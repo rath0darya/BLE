@@ -23,7 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Wifi\nimport androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,14 +45,34 @@ class NearbyWifiActivity:ComponentActivity(){
  }
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  setContent{NearbyWifiScreen(onBack={finish()},onScan={scan()},onStatus={refreshAction=it})}
+  setContent{NearbyWifiScreen(onBack={finish()},onScan={scan()},onStatus={refreshAction=it},onExport={exportReport(it)})}
   try{
    val filter=IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)
    if(Build.VERSION.SDK_INT>=33){registerReceiver(receiver,filter,Context.RECEIVER_NOT_EXPORTED)} else { @Suppress("DEPRECATION") registerReceiver(receiver,filter) }
    receiverRegistered=true
   }catch(_:Exception){}
  }
- private fun permitted():Boolean=ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
+
+ private fun exportReport(rows:List<WifiSignal>){
+  val json=org.json.JSONArray().apply{rows.forEach{r->put(org.json.JSONObject().apply{
+   put("ssid",r.ssid);put("bssid",r.bssid);put("rssi_dbm",r.rssi);put("frequency_mhz",r.frequency);put("security_capabilities",r.security)
+   put("camera_name_hint",r.cameraHint);put("identity_note","SSID text matching is only a naming hint, not evidence that CCTV is present.")
+  })}}.toString(2)
+  val text=buildString{
+   appendLine("BLE EXPLORER — NEARBY WI-FI ACCESS POINT REPORT")
+   appendLine("Generated: "+java.text.SimpleDateFormat("dd MMM yyyy, HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date()))
+   appendLine("Access points: "+rows.size);appendLine("CCTV-name hints: "+rows.count{it.cameraHint})
+   appendLine("Scope: nearby broadcast access points visible to this phone; this does not enumerate clients behind routers.")
+   rows.forEachIndexed{index,r->
+    appendLine();appendLine("ACCESS POINT ${index+1}: ${r.ssid}")
+    appendLine("BSSID: "+r.bssid);appendLine("Signal: "+r.rssi+" dBm");appendLine("Frequency: "+r.frequency+" MHz")
+    appendLine("Security capabilities: "+r.security);appendLine("Camera-name hint: "+r.cameraHint)
+   }
+   appendLine();appendLine("Limitations: SSID hints do not confirm a camera. Wi-Fi scan results are subject to Android permissions and scan throttling.")
+  }
+  ReportExporter.shareAll(this,"BLE Explorer nearby Wi-Fi report","ble-explorer-wifi",text,json)
+ }
+\n private fun permitted():Boolean=ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
  private fun locationEnabled():Boolean=try{
   val lm=getSystemService(Context.LOCATION_SERVICE) as LocationManager
   if(Build.VERSION.SDK_INT>=28)lm.isLocationEnabled else lm.isProviderEnabled(LocationManager.GPS_PROVIDER)||lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
@@ -87,7 +107,7 @@ class NearbyWifiActivity:ComponentActivity(){
  override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==811&&grantResults.isNotEmpty()&&grantResults[0]==PackageManager.PERMISSION_GRANTED)scan()}
  override fun onDestroy(){handler.removeCallbacksAndMessages(null);if(receiverRegistered)try{unregisterReceiver(receiver)}catch(_:Exception){};super.onDestroy()}
  @OptIn(ExperimentalMaterial3Api::class)
- @Composable private fun NearbyWifiScreen(onBack:()->Unit,onScan:()->Unit,onStatus:(()->Unit)->Unit){
+ @Composable private fun NearbyWifiScreen(onBack:()->Unit,onScan:()->Unit,onStatus:(()->Unit)->Unit,onExport:(List<WifiSignal>)->Unit){
   var rows by remember{mutableStateOf(emptyList<WifiSignal>())}
   var status by remember{mutableStateOf("Tap scan to inspect Wi-Fi access points broadcasting nearby.")}
   var scanning by remember{mutableStateOf(false)}
@@ -98,7 +118,7 @@ class NearbyWifiActivity:ComponentActivity(){
      item{Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
       Text("Nearby radio discovery",fontSize=20.sp,fontWeight=FontWeight.Bold)
       Text("Scans Wi-Fi access points visible to this phone, even when they are not on your connected network. It cannot see devices connected behind those access points.")
-      Button(onClick={scanning=true;status="Requesting Wi-Fi scan…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby Wi-Fi")}
+      Button(onClick={scanning=true;status="Requesting Wi-Fi scan…";onScan()},modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text("Scan nearby Wi-Fi")}\n      OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
       Text(status,style=MaterialTheme.typography.bodySmall)
       Text("Access points: ${rows.size} · CCTV-name hints: ${rows.count{it.cameraHint}}",fontWeight=FontWeight.SemiBold)
      }}}

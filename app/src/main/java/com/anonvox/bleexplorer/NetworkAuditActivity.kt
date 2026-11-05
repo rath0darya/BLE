@@ -16,7 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security\nimport androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -202,7 +203,8 @@ class NetworkAuditActivity:ComponentActivity() {
   }
   ReportExporter.shareAll(this,"BLE Explorer local network and CCTV audit","ble-explorer-network-audit",text,json)
  }
-\n override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
+
+ override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -219,7 +221,8 @@ class NetworkAuditActivity:ComponentActivity() {
      Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFFFBDA95));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
      Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFFFE9D2),style=MaterialTheme.typography.bodyMedium)
      Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
-     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}\n     OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
+     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
+     OutlinedButton(onClick={onExport(rows)},modifier=Modifier.fillMaxWidth(),enabled=rows.isNotEmpty()){Icon(Icons.Default.Share,null);Spacer(Modifier.width(8.dp));Text("Export TXT · JSON · PDF report")}
      Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFE9D2))
     }}
     item{Row(verticalAlignment=Alignment.CenterVertically){Text("Show CCTV candidates only",modifier=Modifier.weight(1f));Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}

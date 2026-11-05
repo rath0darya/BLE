@@ -100,7 +100,7 @@ class NearbyWifiActivity:ComponentActivity(){
       Text("Access points: ${rows.size} · CCTV-name hints: ${rows.count{it.cameraHint}}",fontWeight=FontWeight.SemiBold)
      }}}
      if(rows.isEmpty())item{Text("No scan results available yet. Enable Wi-Fi and Location, then scan again. Android may throttle repeated Wi-Fi scans.")}
-     items(rows,key{it.bssid}){r->Card(shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
+     items(rows,key={it.bssid}){r->Card(shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){
       Row(verticalAlignment=Alignment.CenterVertically){Icon(if(r.cameraHint)Icons.Default.CameraAlt else Icons.Default.Wifi,null);Spacer(Modifier.width(8.dp));Text(r.ssid,fontWeight=FontWeight.Bold,modifier=Modifier.weight(1f));if(r.cameraHint)Text("CAMERA HINT",color=MaterialTheme.colorScheme.primary,style=MaterialTheme.typography.labelSmall)}
       Text("BSSID: ${r.bssid}",style=MaterialTheme.typography.bodySmall)
       Text("Signal: ${r.rssi} dBm · Frequency: ${r.frequency} MHz",style=MaterialTheme.typography.bodySmall)

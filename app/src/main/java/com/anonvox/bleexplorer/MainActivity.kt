@@ -245,21 +245,26 @@ private fun extractAdvertisedName(bytes:ByteArray?):String? {
  return null
 }
 
-private fun classifyDevice(name:String,services:List<String>,manufacturer:String,serviceData:String):String {
+private fun classifyDevice(name:String,services:List<String>,manufacturer:String,serviceData:String,deviceClass:Int?=null,majorDeviceClass:Int?=null):String {
  val n=(name+" "+manufacturer+" "+serviceData).lowercase(Locale.ROOT)
+ val minorClass=deviceClass?.and(0x00FC)?:-1
  val u=services.map{raw->val compact=raw.replace("-","").lowercase(Locale.ROOT);if(compact.length==32)compact.substring(4,8) else compact}
  fun has(vararg ids:String)=u.any{v->ids.any{v==it}}
  fun named(vararg words:String)=words.any{n.contains(it)}
  return when {
   named("ev battery","ev-battery","traction battery","battery management system","battery pack","bms","lifepo","li-fe-po","lithium battery","e-scooter battery","electric scooter battery","electric vehicle battery","e-bike battery","ebike battery","inverter battery","bms_","bms-","jbd","dal y bms","jk-bms","seplos","ant bms","pace bms","scooter bms") -> "EV Batteries"
   named("cctv","ip camera","security camera","surveillance","network camera","camera_","camera-","cam_","cam-","nvr","dvr","reolink","arlo","wyze","eufy","ring camera","hikvision","dahua","ezviz","imou","uniview","axis camera","amcrest","tapocam","tapo c","v380","yoosee","xmeye") -> "CCTV Cameras"
+  named("electric vehicle","ev car","ev scooter","ev bike","electric car","electric scooter","e-scooter","electric bike","e-bike","ebike","electric motorcycle","tesla","ather","ola electric","bajaj chetak","tvs iqube","revolt","river indie") -> "EV Vehicles"
+  named("smart tv","android tv","google tv","fire tv","roku tv","webos tv","tizen tv","television","samsung tv","lg tv","sony bravia","bravia tv","mi tv","oneplus tv","tv-","tv_") || (majorDeviceClass==0x0400&&minorClass in setOf(0x24,0x38,0x3C)) -> "TVs"
+  named("tv remote","remote control","remote_","remote-","remote","magic remote","smart remote") || deviceClass==0x050C -> "Remotes"
   named("airpods","earbuds","ear bud","headphone","headset","neckband","soundbar","speaker","galaxy buds","pixel buds","wf-","wh-1000","boAt","boat ","jbl","bose","sony audio","beats ") || has("110b","110d","110e","110f","111e","111f","1124","1130","1131") -> "Audio"
   named("iphone","ipad","android phone","samsung galaxy","galaxy s","galaxy note","pixel phone","oneplus","xiaomi","redmi","realme","vivo ","oppo ","motorola","nothing phone","huawei phone","honor phone") -> "Phones"
   named("apple watch","galaxy watch","pixel watch","fitbit","garmin","smartwatch","smart watch","fitness band","mi band","miband","fitness tracker","heart rate","wearable","watch ") || has("180d","1816","1818","1819","1822","183a") -> "Wearables"
   named("airtag","tile","smarttag","tracker","find my","ibeacon","eddystone","beacon","chipolo","pebblebee") || has("feaa","feab") -> "Trackers"
   named("obd","tpms","tire pressure","tyre pressure","vehicle","motorcycle","car diagnostic","elm327","vlinker","scooter","ebike","e-bike") -> "Automotive"
   named("smart bulb","smart light","smart plug","smart switch","thermostat","homekit","smart home","zigbee","matter","hue","lifx","tuya","sonoff","aqara") || has("fd6f","fcf1") -> "Smart Home"
-  named("keyboard","mouse","trackpad","gamepad","controller","joystick","hid") || has("1812") -> "Input Devices"
+  named("gamepad","game controller","joystick","xbox controller","playstation controller","dualshock","dualsense","nintendo switch pro") -> "Game Controllers"
+  named("keyboard","mouse","trackpad","hid") || has("1812") -> "Input Devices"
   named("laptop","notebook","desktop","macbook","thinkpad","surface pro","chromebook","windows pc") -> "Computers"
   named("printer","label maker","thermal printer","barcode scanner") -> "Printers"
   named("glucose","glucometer","pulse oximeter","blood pressure","medical","hearing aid","insulin") || has("1808","1810","181a","1821") -> "Medical"
@@ -302,6 +307,7 @@ private fun gattRowDescription(row:String):String=when{
 @Composable private fun Screen(devices:List<Device>,pairedDevices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,onDisconnectBms:(Device)->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
  var compact by remember{mutableStateOf(false)};var query by remember{mutableStateOf("")};var filter by remember{mutableStateOf("Any signal")};var selected by remember{mutableStateOf<Device?>(null)};var settings by remember{mutableStateOf(false)}
  val filters=listOf("Any signal","Strong","Weak","Named","Services","Recent")
+ LaunchedEffect(devices,pairedDevices){selected=selected?.let{chosen->(devices+pairedDevices).firstOrNull{it.address==chosen.address}?:chosen}}
  val shown=devices.filter{(it.name.contains(query,true)||it.address.contains(query,true))&&when(filter){"Strong"->it.rssi>=-68;"Weak"->it.rssi < -80;"Named"->it.name!="Unnamed device";"Services"->it.services.isNotEmpty();"Recent"->System.currentTimeMillis()-it.seen<5000;else->true}}
  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(11.dp)){
   Box(Modifier.size(43.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF9D320C),Color(0xFFDAA96A)))),contentAlignment=Alignment.Center){Icon(Icons.Default.BluetoothSearching,null,tint=Color.White,modifier=Modifier.size(26.dp))}

@@ -354,7 +354,7 @@ private fun gattRowDescription(row:String):String=when{
 }
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),tertiary=Color(0xFF94748D),background=Color(0xFF231610),surface=Color(0xFF35241F),surfaceVariant=Color(0xFF49332B),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1),outline=Color(0xFF806457))else lightColorScheme(primary=Color(0xFF9D320C),secondary=Color(0xFFB8521D),tertiary=Color(0xFF94748D),background=Color(0xFFF1E7E2),surface=Color(0xFFFFFAF6),surfaceVariant=Color(0xFFEAD8CE),onSurface=Color(0xFF5A2D1D),onSurfaceVariant=Color(0xFF806457),outline=Color(0xFFD6BDAE)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun Screen(devices:List<Device>,pairedDevices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,onDisconnectBms:()->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
+@Composable private fun Screen(devices:List<Device>,pairedDevices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,onDisconnectBms:(Device)->Unit,onOpenBluetoothSettings:()->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
  var compact by remember{mutableStateOf(false)}
  var query by remember{mutableStateOf("")}
  var filter by remember{mutableStateOf("All")}
@@ -409,7 +409,7 @@ private fun gattRowDescription(row:String):String=when{
    }
    Spacer(Modifier.height(10.dp))
    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){
-    QuickAction("Identify device",Icons.Default.ManageSearch,Modifier.weight(1f)){if(devices.isNotEmpty())selected=strongest else onScan()}
+    QuickAction("Identify device",Icons.Default.Search,Modifier.weight(1f)){if(devices.isNotEmpty())selected=strongest else onScan()}
     QuickAction("Export reports",Icons.Default.Description,Modifier.weight(1f)){reportChoices=true}
    }
   }
@@ -440,7 +440,7 @@ private fun gattRowDescription(row:String):String=when{
    }
   }else items(shown,key={it.address}){d->DeviceCard(d,compact){selected=d}}
  }}
- selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},{onDisconnectBms()},{onOpenBluetoothSettings()},bms){selected=null}}
+ selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},{onDisconnectBms(device)},{onOpenBluetoothSettings()},bms){selected=null}}
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Settings")},text={Text("Manage Bluetooth permissions and scan behaviour.")},confirmButton={TextButton(onClick={settings=false}){Text("Done")}})
  if(reportChoices)AlertDialog(onDismissRequest={reportChoices=false},title={Text("Export reports")},text={
   Column(verticalArrangement=Arrangement.spacedBy(5.dp)){

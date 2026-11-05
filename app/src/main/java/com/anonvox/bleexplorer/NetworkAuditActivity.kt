@@ -188,22 +188,22 @@ class NetworkAuditActivity:ComponentActivity() {
  var active by remember{mutableStateOf(false)}
  var onlyCameras by remember{mutableStateOf(false)}
  val shown=rows.filter{!onlyCameras||it.camera}
- MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFF5EEAD4),background=Color(0xFF07111F),surface=Color(0xFF111E2E),onSurface=Color(0xFFE5EEF8),onSurfaceVariant=Color(0xFF9FB0C4))){
+ MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFFFBDA95),secondary=Color(0xFFDAA96A),background=Color(0xFF231610),surface=Color(0xFF35241F),onSurface=Color(0xFFF1E7E2),onSurfaceVariant=Color(0xFFD2BDB1))){
   Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized active local network",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-    item{Column(Modifier.fillMaxWidth().background(Color(0xFF13283B),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
-     Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFF5EEAD4));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
-     Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFBDCDDF),style=MaterialTheme.typography.bodyMedium)
+    item{Column(Modifier.fillMaxWidth().background(Color(0xFF5A2D1D),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFFFBDA95));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
+     Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFFFE9D2),style=MaterialTheme.typography.bodyMedium)
      Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
      Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
-     Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFB9C9DA))
+     Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFFFE9D2))
     }}
     item{Row(verticalAlignment=Alignment.CenterVertically){Text("Show CCTV candidates only",modifier=Modifier.weight(1f));Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}
     if(shown.isEmpty())item{Text(if(rows.isEmpty())"No results yet. Start a scan while connected to your own or administered Wi-Fi." else "No camera candidates found.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
     items(shown,key={it.ip}){f->Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=if(f.camera)Color(0xFF5EEAD4)else Color(0xFF93C5FD));Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall)}}
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=if(f.camera)Color(0xFFFBDA95)else Color(0xFFDAA96A));Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall)}}
      Text(f.confidence,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-     if(f.details.isNotBlank())Text(f.details,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold,color=Color(0xFF5EEAD4))
+     if(f.details.isNotBlank())Text(f.details,style=MaterialTheme.typography.bodySmall,fontWeight=FontWeight.SemiBold,color=Color(0xFFFBDA95))
      else if(f.camera)Text("Device model details were not exposed without authentication.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      Text("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"},style=MaterialTheme.typography.bodySmall)
      Text("Protocols: "+f.protocols.joinToString().ifBlank{"No protocol signature"},style=MaterialTheme.typography.bodySmall)

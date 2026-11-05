@@ -1,0 +1,160 @@
+package com.anonvox.bleexplorer
+
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.net.*
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+
+private data class LanFinding(val ip:String,val ports:List<Int>,val camera:Boolean,val confidence:String,val protocols:List<String>,val risks:List<String>)
+
+class NetworkAuditActivity:ComponentActivity() {
+ @Volatile private var running=false
+ private val pool=Executors.newFixedThreadPool(32)
+ private val evidence=java.util.concurrent.ConcurrentHashMap<String,List<String>>()
+ private var lock:WifiManager.MulticastLock?=null
+
+ override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false})}}
+
+ private fun subnet():String?=try{
+  val wm=getSystemService(Context.WIFI_SERVICE) as WifiManager
+  @Suppress("DEPRECATION") val ip=wm.connectionInfo.ipAddress
+  if(ip==0)null else {val a=ip and 255;val b=(ip shr 8) and 255;val c=(ip shr 16) and 255;if(a==0||a==127||a>=224)null else a.toString()+"."+b+"."+c}
+ }catch(_:Exception){null}
+
+ private fun startAudit(update:(List<LanFinding>,String,Boolean)->Unit){
+  if(running)return
+  val base=subnet()
+  if(base==null){update(emptyList(),"Connect to Wi-Fi first. This audit scans the connected Wi-Fi /24 subnet.",false);return}
+  running=true;evidence.clear()
+  update(emptyList(),"Scanning local subnet "+base+".0/24. Only local service discovery is performed.",true)
+  Thread{
+   val results=java.util.Collections.synchronizedList(mutableListOf<LanFinding>())
+   val completed=AtomicInteger(0)
+   try{
+    try{val wm=applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager;lock=wm.createMulticastLock("ble-local-discovery").also{it.setReferenceCounted(false);it.acquire()}}catch(_:Exception){}
+    udpProbe()
+    for(host in 1..254){
+     if(!running)break
+     val address=base+"."+host
+     pool.submit{
+      if(running){inspect(address)?.let{results.add(it)}}
+      val count=completed.incrementAndGet()
+      if(count%8==0||count==254){val copy=synchronized(results){results.sortedBy{it.ip}};runOnUiThread{update(copy,"Checked "+count+" / 254 addresses · "+copy.size+" devices found",running)}}
+     }
+    }
+    while(completed.get()<254&&running)Thread.sleep(120)
+    val copy=synchronized(results){results.sortedBy{it.ip}}
+    runOnUiThread{update(copy,if(running)"Audit complete · "+copy.size+" devices found" else "Audit stopped · "+copy.size+" devices found",false)}
+   }catch(_:InterruptedException){runOnUiThread{update(synchronized(results){results.toList()},"Audit stopped",false)}}
+   finally{running=false;try{lock?.release()}catch(_:Exception){};lock=null}
+  }.start()
+ }
+
+ private fun udpProbe(){
+  val probes=listOf(
+   Pair(1900,"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\nST: ssdp:all\r\n\r\n"),
+   Pair(3702,"<e:Envelope xmlns:e=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:w=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\" xmlns:dn=\"http://www.onvif.org/ver10/network/wsdl\"><e:Header><w:MessageID>uuid:ble-audit</w:MessageID><w:To>urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To><w:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action></e:Header><e:Body><d:Probe><d:Types>dn:NetworkVideoTransmitter</d:Types></d:Probe></e:Body></e:Envelope>")
+  )
+  for((port,message) in probes)try{
+   DatagramSocket().use{s->
+    s.soTimeout=500
+    val bytes=message.toByteArray()
+    s.send(DatagramPacket(bytes,bytes.size,InetSocketAddress("239.255.255.250",port)))
+    val until=System.currentTimeMillis()+900
+    while(running&&System.currentTimeMillis()<until)try{
+     val packet=DatagramPacket(ByteArray(8192),8192);s.receive(packet)
+     val ip=packet.address.hostAddress?:continue
+     val body=String(packet.data,0,packet.length)
+     val label=if(port==3702||body.contains("NetworkVideoTransmitter",true))"ONVIF WS-Discovery" else "UPnP / SSDP"
+     evidence[ip]=(evidence[ip].orEmpty()+label).distinct()
+    }catch(_:SocketTimeoutException){break}
+   }
+  }catch(_:Exception){}
+ }
+
+ private fun inspect(ip:String):LanFinding?{
+  val candidates=listOf(21,23,80,443,554,8554,8000,8080,8443,8899,37777,34567)
+  val open=mutableListOf<Int>()
+  for(port in candidates){if(!running)return null;try{Socket().use{it.connect(InetSocketAddress(ip,port),240);open.add(port)}}catch(_:Exception){}}
+  val signals=evidence[ip].orEmpty()
+  if(open.isEmpty()&&signals.isEmpty())return null
+  val protocols=mutableListOf<String>()
+  if(80 in open||8000 in open||8080 in open)protocols.add("HTTP")
+  if(443 in open||8443 in open)protocols.add("HTTPS")
+  if(554 in open||8554 in open)protocols.add("RTSP")
+  if(signals.any{it.contains("ONVIF")})protocols.add("ONVIF / WS-Discovery")
+  if(signals.any{it.contains("SSDP")})protocols.add("UPnP / SSDP")
+  if(21 in open)protocols.add("FTP")
+  if(23 in open)protocols.add("Telnet")
+  if(8899 in open)protocols.add("Vendor service · 8899")
+  if(37777 in open)protocols.add("Possible Dahua service · 37777")
+  if(34567 in open)protocols.add("Possible DVR/NVR service · 34567")
+  val camera=554 in open||8554 in open||37777 in open||34567 in open||signals.any{it.contains("ONVIF")}
+  val risks=mutableListOf<String>()
+  if(23 in open)risks.add("HIGH: Telnet is commonly unencrypted. Disable it or restrict management access.")
+  if(21 in open)risks.add("REVIEW: FTP may expose credentials/data without encryption. Prefer SFTP/FTPS or disable it.")
+  if(80 in open||8080 in open||8000 in open)risks.add("REVIEW: HTTP is reachable. Confirm admin access is protected by HTTPS.")
+  if(554 in open||8554 in open)risks.add("REVIEW: RTSP is reachable. Verify stream authentication and restrict access to trusted clients.")
+  if(camera&&443 !in open&&8443 !in open)risks.add("REVIEW: no common HTTPS port detected; this does not prove encryption is absent.")
+  if(risks.isEmpty()&&camera)risks.add("No obvious exposure found by these limited checks. Firmware and authentication remain unverified.")
+  val confidence=when{signals.any{it.contains("ONVIF")}->"High · ONVIF discovery response";554 in open||8554 in open->"High · RTSP service";camera->"Medium · camera-related port";else->"Low · network device"}
+  return LanFinding(ip,open,camera,confidence,(protocols+signals).distinct(),risks)
+ }
+
+ override fun onDestroy(){running=false;try{lock?.release()}catch(_:Exception){};pool.shutdownNow();super.onDestroy()}
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable private fun NetworkAuditScreen(onBack:()->Unit,onScan:(((List<LanFinding>,String,Boolean)->Unit))->Unit,onStop:()->Unit){
+ var rows by remember{mutableStateOf(emptyList<LanFinding>())}
+ var status by remember{mutableStateOf("Ready · connect to Wi-Fi and start an audit")}
+ var active by remember{mutableStateOf(false)}
+ var onlyCameras by remember{mutableStateOf(false)}
+ val shown=rows.filter{!onlyCameras||it.camera}
+ MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFF5EEAD4),background=Color(0xFF07111F),surface=Color(0xFF111E2E),onSurface=Color(0xFFE5EEF8),onSurfaceVariant=Color(0xFF9FB0C4))){
+  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized local Wi-Fi only",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
+   LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+    item{Column(Modifier.fillMaxWidth().background(Color(0xFF13283B),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFF5EEAD4));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
+     Text("Discover IP cameras, DVRs, NVRs and network services. Review protocol exposure without logging in or exploiting devices.",color=Color(0xFFBDCDDF),style=MaterialTheme.typography.bodyMedium)
+     Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
+     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
+     Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFB9C9DA))
+    }}
+    item{Row(verticalAlignment=Alignment.CenterVertically){Text("Show CCTV candidates only",modifier=Modifier.weight(1f));Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}
+    if(shown.isEmpty())item{Text(if(rows.isEmpty())"No results yet. Start a scan while connected to your own or administered Wi-Fi." else "No camera candidates found.",color=MaterialTheme.colorScheme.onSurfaceVariant)}
+    items(shown,key={it.ip}){f->Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface),shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=if(f.camera)Color(0xFF5EEAD4)else Color(0xFF93C5FD));Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall)}}
+     Text(f.confidence,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     Text("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"},style=MaterialTheme.typography.bodySmall)
+     Text("Protocols: "+f.protocols.joinToString().ifBlank{"No protocol signature"},style=MaterialTheme.typography.bodySmall)
+     Text("Security review",fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.labelMedium)
+     f.risks.forEach{risk->Text("• "+risk,style=MaterialTheme.typography.bodySmall,color=if(risk.startsWith("HIGH"))Color(0xFFFCA5A5)else Color(0xFFFCD34D))}
+    }}}
+    item{Text("Limitations: discovery is heuristic unless ONVIF responds. Open ports indicate reachability, not confirmed vulnerabilities. This tool does not test credentials, firmware CVEs, anonymous streams, cloud exposure or exploitability. “No obvious risk” is not a security certification.",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+   }
+  }
+ }
+}

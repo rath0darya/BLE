@@ -1,4 +1,4 @@
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
+plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose"); id("maven-publish") }
 android {
  namespace = "com.anonvox.bleexplorer"
  compileSdk = 35
@@ -6,8 +6,8 @@ android {
   applicationId = "com.anonvox.bleexplorer"
   minSdk = 23
   targetSdk = 35
-  versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 2
-  versionName = System.getenv("VERSION_NAME") ?: "1.2.0"
+  versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 3
+  versionName = System.getenv("VERSION_NAME") ?: "1.3.0"
  }
  val releaseKeystore = System.getenv("KEYSTORE_PATH")
  signingConfigs {
@@ -30,6 +30,39 @@ android {
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { compose = true }
 }
+
+afterEvaluate {
+ publishing {
+  publications {
+   create<MavenPublication>("releaseApk") {
+    groupId = "com.anonvox"
+    artifactId = "ble-explorer"
+    version = android.defaultConfig.versionName ?: "1.3.0"
+    artifact(file("$buildDir/outputs/apk/release/app-release.apk")) {
+     extension = "apk"
+    }
+    pom {
+     name.set("BLE Explorer")
+     description.set("Android Bluetooth discovery and authorized local-network device audit.")
+     url.set("https://github.com/rath0darya/BLE")
+     licenses { license { name.set("MIT License"); url.set("https://opensource.org/licenses/MIT") } }
+     scm { url.set("https://github.com/rath0darya/BLE") }
+    }
+   }
+  }
+  repositories {
+   maven {
+    name = "GitHubPackages"
+    url = uri("https://maven.pkg.github.com/rath0darya/BLE")
+    credentials {
+     username = System.getenv("GITHUB_ACTOR")
+     password = System.getenv("GITHUB_TOKEN")
+    }
+   }
+  }
+ }
+}
+
 dependencies {
  implementation(platform("androidx.compose:compose-bom:2024.12.01"))
  implementation("androidx.activity:activity-compose:1.10.0")

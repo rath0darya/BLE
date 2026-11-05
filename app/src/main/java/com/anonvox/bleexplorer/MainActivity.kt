@@ -55,9 +55,20 @@ class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
  private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
  private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;private var bmsUpdate:((BmsSnapshot)->Unit)?=null
+ private val bondReceiver=object:android.content.BroadcastReceiver(){
+  override fun onReceive(context:Context?,intent:Intent?){
+   if(intent?.action!=BluetoothDevice.ACTION_BOND_STATE_CHANGED)return
+   val remote=try{intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)}catch(_:Exception){null}?:return
+   val state=intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE,BluetoothDevice.BOND_NONE)
+   val address=try{remote.address}catch(_:SecurityException){return}
+   synchronized(found){found[address]?.let{found[address]=it.copy(bondState=state)}}
+   runOnUiThread{update?.invoke(found.values.sortedByDescending{it.rssi})}
+  }
+ }
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
   var devices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
   update={devices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
+  try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}
   AppTheme { Screen(devices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},bms,{startActivity(Intent(this,NetworkAuditActivity::class.java))},{startActivity(Intent(this,NearbyWifiActivity::class.java))},{startActivity(Intent(this,NearbyWifiDirectActivity::class.java))}) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -163,7 +174,7 @@ class MainActivity:ComponentActivity() {
  private fun share(ds:List<Device>){val csv=buildString{appendLine("Name,Category,Address,RSSI,Signal,First seen,Last seen,Services,Manufacturer data,Service data,Raw advertisement");ds.forEach{d->appendLine(listOf(d.name,d.category,d.address,d.rssi.toString(),d.quality,date(d.first),date(d.seen),d.services.joinToString(";"),d.manufacturer,d.serviceData,d.raw).joinToString(","){ "\""+it.replace("\"","\"\"")+"\"" })}}
   startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{type="text/csv";putExtra(Intent.EXTRA_SUBJECT,"BLE Explorer results");putExtra(Intent.EXTRA_TEXT,csv)},"Share scan results"))
  }
- override fun onDestroy(){stop("App closed");try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
+ override fun onDestroy(){stop("App closed");try{unregisterReceiver(bondReceiver)}catch(_:Exception){};try{bmsGatt?.disconnect();bmsGatt?.close()}catch(_:Exception){};bmsGatt=null;update=null;statusUpdate=null;bmsUpdate=null;super.onDestroy()}
 }
 /** Reads Complete Local Name (0x09) and Shortened Local Name (0x08) AD structures.
  * ScanRecord.deviceName is preferred, but parsing the advertisement is a safe fallback.
@@ -208,7 +219,7 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
   else -> "Unknown"
  }
 }
-private fun bluetoothClassName(code:Int):String=when(code){
+private fun bluetoothClassName(code:Int):String=when(code and 0x1F00){
  0x0100->"Computer";0x0200->"Phone";0x0300->"Networking";0x0400->"Audio / video";0x0500->"Peripheral";0x0600->"Imaging";0x0700->"Wearable";0x0800->"Toy";0x0900->"Health";else->"Other / vendor-defined device class"
 }
 private fun majorBluetoothClassName(code:Int):String=when(code){

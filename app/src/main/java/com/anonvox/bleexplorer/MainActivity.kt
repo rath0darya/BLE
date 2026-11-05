@@ -54,7 +54,7 @@ private data class Device(val address:String,val name:String,val category:String
 class MainActivity:ComponentActivity() {
  private val handler=Handler(Looper.getMainLooper()); private var scanner:BluetoothLeScanner?=null;private var callback:ScanCallback?=null;private var active=false
  private val found=linkedMapOf<String,Device>();private val knownNames=mutableMapOf<String,String>();private var update:((List<Device>)->Unit)?=null;private var statusUpdate:((Boolean,String)->Unit)?=null
- private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;private var bmsUpdate:((BmsSnapshot)->Unit)?=null
+ private val timeout=Runnable{stop("Scan complete")};private var bmsGatt:BluetoothGatt?=null;private var bmsUpdate:((BmsSnapshot)->Unit)?=null;private val gattReadQueue=java.util.ArrayDeque<BluetoothGattCharacteristic>();private val gattRows=mutableListOf<String>()
  private val bondReceiver=object:android.content.BroadcastReceiver(){
   override fun onReceive(context:Context?,intent:Intent?){
    if(intent?.action!=BluetoothDevice.ACTION_BOND_STATE_CHANGED)return
@@ -128,32 +128,61 @@ class MainActivity:ComponentActivity() {
     }
     override fun onServicesDiscovered(gatt:BluetoothGatt,status:Int){
      if(status!=BluetoothGatt.GATT_SUCCESS){runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · service discovery failed"))};return}
-     val rows=mutableListOf<String>();var battery:BluetoothGattCharacteristic?=null
+     val rows=mutableListOf<String>();gattReadQueue.clear();var readableCount=0
      for(service in gatt.services){
       rows.add("SERVICE  "+service.uuid)
       for(ch in service.characteristics){
        val p=mutableListOf<String>()
-       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_READ!=0)p.add("Read")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_READ!=0){p.add("Read");gattReadQueue.add(ch);readableCount++}
        if(ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE!=0)p.add("Write")
-       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE!=0)p.add("Write NR")
+       if(ch.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE!=0)p.add("Write without response")
        if(ch.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY!=0)p.add("Notify")
        if(ch.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE!=0)p.add("Indicate")
        rows.add(ch.uuid.toString()+" · "+p.joinToString("/").ifBlank{"No standard access flags"})
-       if(ch.uuid.toString().equals("00002a19-0000-1000-8000-00805f9b34fb",true))battery=ch
+       ch.descriptors.forEach{descriptor->rows.add("DESCRIPTOR  "+descriptor.uuid+" · belongs to "+ch.uuid)}
       }
      }
-     runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · "+gatt.services.size+" services discovered",characteristics=rows))}
-     battery?.let{try{gatt.readCharacteristic(it)}catch(_:SecurityException){}}
+     gattRows.clear();gattRows.addAll(rows)
+     runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · "+gatt.services.size+" services · "+readableCount+" readable characteristics queued",characteristics=gattRows.toList()))}
+     readNextGattCharacteristic(gatt)
     }
     @Deprecated("Deprecated Android callback")
     override fun onCharacteristicRead(gatt:BluetoothGatt,characteristic:BluetoothGattCharacteristic,status:Int){
-     if(status==BluetoothGatt.GATT_SUCCESS&&characteristic.uuid.toString().equals("00002a19-0000-1000-8000-00805f9b34fb",true)){
-      val level=characteristic.value?.firstOrNull()?.toInt()?.and(0xFF)
-      runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · "+gatt.services.size+" services discovered",level,gatt.services.flatMap{sv->listOf("SERVICE  "+sv.uuid)+sv.characteristics.map{it.uuid.toString()}}))}
-     }
+     recordGattCharacteristicRead(gatt,characteristic,characteristic.value?:byteArrayOf(),status)
+    }
+    override fun onCharacteristicRead(gatt:BluetoothGatt,characteristic:BluetoothGattCharacteristic,value:ByteArray,status:Int){
+     recordGattCharacteristicRead(gatt,characteristic,value,status)
     }
    })
   }catch(_:SecurityException){bmsUpdate?.invoke(BmsSnapshot("Bluetooth permission required"))}catch(_:Exception){bmsUpdate?.invoke(BmsSnapshot("Could not connect to this device"))}
+ }
+ private fun readNextGattCharacteristic(gatt:BluetoothGatt){
+  if(gattReadQueue.isEmpty()){
+   runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · GATT inspection complete",characteristics=gattRows.toList()))}
+   return
+  }
+  val next=gattReadQueue.removeFirst()
+  try{
+   if(!gatt.readCharacteristic(next))handler.postDelayed({readNextGattCharacteristic(gatt)},180)
+  }catch(_:SecurityException){gattRows.add("READ BLOCKED  "+next.uuid+" · Android permission or device authorization required");handler.postDelayed({readNextGattCharacteristic(gatt)},180)}
+  catch(_:Exception){gattRows.add("READ FAILED  "+next.uuid);handler.postDelayed({readNextGattCharacteristic(gatt)},180)}
+ }
+ private fun recordGattCharacteristicRead(gatt:BluetoothGatt,characteristic:BluetoothGattCharacteristic,value:ByteArray,status:Int){
+  var level:Int?=null
+  if(status==BluetoothGatt.GATT_SUCCESS){
+   val uuid=characteristic.uuid.toString()
+   if(uuid.equals("00002a19-0000-1000-8000-00805f9b34fb",true))level=value.firstOrNull()?.toInt()?.and(0xFF)
+   val decoded=decodeGattValue(value)
+   gattRows.add("READ VALUE  "+uuid+" = "+decoded)
+  }else gattRows.add("READ FAILED  "+characteristic.uuid+" · GATT status "+status)
+  runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Reading device characteristics · "+gattReadQueue.size+" remaining",level,gattRows.toList()))}
+  readNextGattCharacteristic(gatt)
+ }
+ private fun decodeGattValue(value:ByteArray):String{
+  if(value.isEmpty())return "Empty value"
+  val hex=value.take(64).joinToString(" "){String.format(Locale.US,"%02X",it.toInt() and 0xFF)}
+  val text=String(value,Charsets.UTF_8).trim().trim('\u0000')
+  return if(text.isNotBlank()&&text.all{it.isLetterOrDigit()||it.isWhitespace()||it in "._:/-+()"})"Text: "+text+" · HEX: "+hex else "HEX: "+hex
  }
  private fun pairDevice(device:Device){
   if(!allowed()){requestPermissions(requiredPermissions(),701);Toast.makeText(this,"Allow Bluetooth permissions before pairing",Toast.LENGTH_LONG).show();return}

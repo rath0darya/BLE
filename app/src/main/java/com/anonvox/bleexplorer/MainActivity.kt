@@ -439,7 +439,7 @@ private fun gattRowDescription(row:String):String=when{
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Discovery settings")},text={Text("Bluetooth discovery requires Nearby devices permission. Android versions and device manufacturers may impose additional restrictions. Scans start only when requested and stop automatically after 30 seconds.")},confirmButton={TextButton(onClick={settings=false}){Text("Done")}})
  if(reportChoices)AlertDialog(onDismissRequest={reportChoices=false},title={Text("Export evidence report")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
   Text("Choose the evidence source. Each tool exports its own captured data in TXT, JSON and PDF formats.")
-  TextButton(onClick={if(devices.isNotEmpty()){{reportChoices=false;onShare()}}else{{reportChoices=false;onScan()}}},modifier=Modifier.fillMaxWidth()){Text(if(devices.isNotEmpty())"Bluetooth discovery report" else "Start Bluetooth discovery first")}
+  TextButton(onClick={reportChoices=false;if(devices.isNotEmpty())onShare() else onScan()},modifier=Modifier.fillMaxWidth()){Text(if(devices.isNotEmpty())"Bluetooth discovery report" else "Start Bluetooth discovery first")}
   TextButton(onClick={reportChoices=false;onNearbyWifi()},modifier=Modifier.fillMaxWidth()){Text("Nearby Wi-Fi access-point report")}
   TextButton(onClick={reportChoices=false;onNetworkAudit()},modifier=Modifier.fillMaxWidth()){Text("Local network & CCTV audit report")}
  },confirmButton={TextButton(onClick={reportChoices=false}){Text("Close")}}})

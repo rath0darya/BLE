@@ -1,6 +1,7 @@
 package com.anonvox.bleexplorer
 import android.Manifest
-import android.bluetooth.BluetoothAdapter\nimport android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -95,7 +96,8 @@ class MainActivity:ComponentActivity() {
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{
   var devices by remember{mutableStateOf(emptyList<Device>())};var pairedDevices by remember{mutableStateOf(emptyList<Device>())};var scanning by remember{mutableStateOf(false)};var status by remember{mutableStateOf("Ready when you are")};var bms by remember{mutableStateOf(BmsSnapshot())}
   update={devices=it};pairedUpdate={pairedDevices=it};statusUpdate={a,s->scanning=a;status=s};bmsUpdate={bms=it}
-  try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}\n  try{val classicFilter=IntentFilter().apply{addAction(BluetoothDevice.ACTION_FOUND);addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)};if(Build.VERSION.SDK_INT>=33)registerReceiver(classicReceiver,classicFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(classicReceiver,classicFilter)}catch(_:Exception){}
+  try{val bondFilter=IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED);if(Build.VERSION.SDK_INT>=33)registerReceiver(bondReceiver,bondFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(bondReceiver,bondFilter)}catch(_:Exception){}
+  try{val classicFilter=IntentFilter().apply{addAction(BluetoothDevice.ACTION_FOUND);addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)};if(Build.VERSION.SDK_INT>=33)registerReceiver(classicReceiver,classicFilter,Context.RECEIVER_NOT_EXPORTED)else registerReceiver(classicReceiver,classicFilter)}catch(_:Exception){}
   AppTheme { Screen(devices,pairedDevices,scanning,status,{requestScan()},{stop("Scan stopped")},{share(devices)},{device->pairDevice(device)},{device->connectBms(device)},{device->disconnectBms(device)},{startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))},bms,{startActivity(Intent(this,NetworkAuditActivity::class.java))},{startActivity(Intent(this,NearbyWifiActivity::class.java))},{startActivity(Intent(this,NearbyWifiDirectActivity::class.java))}) }
  }}
  private fun requiredPermissions():Array<String> = if(Build.VERSION.SDK_INT>=31) arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT,Manifest.permission.ACCESS_FINE_LOCATION) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -110,7 +112,8 @@ class MainActivity:ComponentActivity() {
   scanner=adapter.bluetoothLeScanner;if(scanner==null){statusUpdate?.invoke(false,"Bluetooth scanner unavailable");return};loadPairedDevices()
   found.clear();update?.invoke(emptyList())
   callback=object:ScanCallback(){override fun onScanResult(type:Int,result:ScanResult){add(result)};override fun onBatchScanResults(results:MutableList<ScanResult>){results.forEach{add(it)}};override fun onScanFailed(code:Int){runOnUiThread{stop("Scan failed ($code). Try again.")}}}
-  scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)\n  try{adapter.startDiscovery()}catch(_:SecurityException){}
+  scanner?.startScan(null,ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES).setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE).setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT).setReportDelay(0L).build(),callback)
+  try{adapter.startDiscovery()}catch(_:SecurityException){}
   active=true;statusUpdate?.invoke(true,"Scanning nearby devices…");handler.removeCallbacks(timeout);handler.postDelayed(timeout,30000)
  }catch(_:SecurityException){statusUpdate?.invoke(false,"Bluetooth permission was denied")}catch(_:Exception){statusUpdate?.invoke(false,"Could not start scanning")}}
  private fun add(r:ScanResult){

@@ -47,7 +47,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 private data class BmsSnapshot(val status:String="Not connected",val batteryLevel:Int?=null,val characteristics:List<String> = emptyList())
-private data class Device(val address:String,val name:String,val category:String,val transport:String,val rssi:Int,val seen:Long,val first:Long,val tx:Int?,val services:List<String>,val manufacturer:String,val serviceData:String,val raw:String,val history:List<Int>) {
+private data class Device(val address:String,val name:String,val category:String,val transport:String,val rssi:Int,val seen:Long,val first:Long,val tx:Int?,val services:List<String>,val manufacturer:String,val serviceData:String,val raw:String,val history:List<Int>,val bondState:Int=BluetoothDevice.BOND_NONE,val deviceClass:Int?=null,val majorDeviceClass:Int?=null,val alias:String="",val cachedUuids:List<String> = emptyList()) {
  val quality get()=when { rssi>=-55->"Very strong";rssi>=-68->"Strong";rssi>=-80->"Moderate";else->"Weak" }
  val tint get()=when { rssi>=-55->Color(0xFF22C55E);rssi>=-68->Color(0xFF84CC16);rssi>=-80->Color(0xFFF59E0B);else->Color(0xFFEF4444) }
 }
@@ -94,7 +94,11 @@ class MainActivity:ComponentActivity() {
    val name=retainedName?:advertisedName?:cachedName?:"Unnamed device"
    if(name!="Unnamed device")knownNames[addr]=name
    val category=classifyDevice(name,services,m,sd)
-   found[addr]=Device(addr,name,category,transport,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20))
+   val btClass=try{r.device.bluetoothClass}catch(_:Exception){null}
+   val bond=try{r.device.bondState}catch(_:Exception){BluetoothDevice.BOND_NONE}
+   val alias=try{if(Build.VERSION.SDK_INT>=30)r.device.alias.orEmpty() else ""}catch(_:Exception){""}
+   val uuids=try{r.device.uuids?.map{it.uuid.toString()}.orEmpty()}catch(_:Exception){emptyList()}
+   found[addr]=Device(addr,name,category,transport,r.rssi,now,old?.first?:now,rec?.txPowerLevel,services,m,sd,raw,((old?.history?:emptyList())+r.rssi).takeLast(20),bond,btClass?.deviceClass,btClass?.majorDeviceClass,alias,uuids)
    val list=found.values.sortedByDescending{it.rssi}
    runOnUiThread{update?.invoke(list)}
   }
@@ -204,6 +208,36 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
   else -> "Unknown"
  }
 }
+private fun bluetoothClassName(code:Int):String=when(code){
+ 0x0100->"Computer";0x0200->"Phone";0x0300->"Networking";0x0400->"Audio / video";0x0500->"Peripheral";0x0600->"Imaging";0x0700->"Wearable";0x0800->"Toy";0x0900->"Health";else->"Other / vendor-defined device class"
+}
+private fun majorBluetoothClassName(code:Int):String=when(code){
+ 0x0100->"Computer";0x0200->"Phone";0x0300->"Network access point";0x0400->"Audio / video";0x0500->"Peripheral";0x0600->"Imaging";0x0700->"Wearable";0x0800->"Toy";0x0900->"Health";0x1F00->"Uncategorized";else->"Other / unknown"
+}
+private fun gattRowTitle(row:String):String=when{
+ row.startsWith("SERVICE")->"GATT service"
+ row.contains("00002a19",true)->"Battery level characteristic"
+ row.contains("00002a29",true)->"Manufacturer name characteristic"
+ row.contains("00002a24",true)->"Model number characteristic"
+ row.contains("00002a26",true)->"Firmware revision characteristic"
+ row.contains("00002a27",true)->"Hardware revision characteristic"
+ row.contains("00002a25",true)->"Serial number characteristic"
+ row.contains("00002a23",true)->"System ID characteristic"
+ row.contains("00002a50",true)->"PnP ID characteristic"
+ else->"GATT characteristic / permissions"
+}
+private fun gattRowDescription(row:String):String=when{
+ row.startsWith("SERVICE")->row.removePrefix("SERVICE  ")+" — a group of related functions exposed by the device"
+ row.contains("00002a19",true)->"${row} — battery charge remaining, normally expressed as a percentage"
+ row.contains("00002a29",true)->"${row} — manufacturer name, if the device makes it readable"
+ row.contains("00002a24",true)->"${row} — product model identifier, if readable"
+ row.contains("00002a26",true)->"${row} — firmware version string, if readable"
+ row.contains("00002a27",true)->"${row} — hardware revision string, if readable"
+ row.contains("00002a25",true)->"${row} — serial number; may be restricted or unavailable"
+ row.contains("00002a23",true)->"${row} — Bluetooth SIG system identifier"
+ row.contains("00002a50",true)->"${row} — vendor/product identifiers and product version"
+ else->"${row} — access flags show whether the characteristic advertises read, write, notify or indicate operations"
+}
 @Composable private fun AppTheme(content: @Composable () -> Unit){val dark=isSystemInDarkTheme();MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFF7DD3FC),secondary=Color(0xFFA5B4FC),background=Color(0xFF0A1020),surface=Color(0xFF121B2D),surfaceVariant=Color(0xFF202B40),onSurface=Color(0xFFF1F5F9),onSurfaceVariant=Color(0xFFB8C5D8))else lightColorScheme(primary=Color(0xFF0369A1),secondary=Color(0xFF4F46E5),background=Color(0xFFF4F7FC),surface=Color.White,surfaceVariant=Color(0xFFE8EEF7),onSurface=Color(0xFF102033),onSurfaceVariant=Color(0xFF52647B)),content=content)}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Screen(devices:List<Device>,active:Boolean,status:String,onScan:()->Unit,onStop:()->Unit,onShare:()->Unit,onPair:(Device)->Unit,onConnectBms:(Device)->Unit,bms:BmsSnapshot,onNetworkAudit:()->Unit,onNearbyWifi:()->Unit,onNearbyWifiDirect:()->Unit){
@@ -256,6 +290,15 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
  Detail("LE Secure Connections","Not confirmed by scan. If both devices support it, BLE pairing can use ECDH P-256.")
  Detail("Pairing availability","Not guaranteed by discovery. Some devices only broadcast and do not accept pairing.")
  Row(horizontalArrangement=Arrangement.spacedBy(10.dp)){Metric("SIGNAL","${d.rssi} dBm",Icons.Default.SignalCellularAlt,Modifier.weight(1f));Metric("QUALITY",d.quality,Icons.Default.CheckCircle,Modifier.weight(1f))}
+ Text("GATT DEVICE INSPECTION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+ Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+  Detail("Connection and discovery status",bms.status+" — GATT is the Bluetooth Low Energy data interface used by many sensors and smart devices")
+  Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & inspect device services")}
+  if(bms.characteristics.isNotEmpty()){
+   Text("Discovered GATT services and characteristics",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall)
+   bms.characteristics.forEach{row->Detail(gattRowTitle(row),gattRowDescription(row))}
+  }else Text("No GATT service data loaded yet. Connect to a BLE device to ask it for its public service and characteristic list. Some devices require authentication or do not allow connections.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ }
  if(d.category=="EV Batteries"||d.category=="Batteries"){
   Text("EV BATTERY · BMS MONITOR",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
   Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
@@ -264,7 +307,6 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
     Metric("BATTERY LEVEL",bms.batteryLevel?.let{it.toString()+"%"}?:"—",Icons.Default.BatteryFull,Modifier.weight(1f))
     Metric("GATT SERVICES",bms.characteristics.count{it.startsWith("SERVICE")}.toString(),Icons.Default.SettingsBluetooth,Modifier.weight(1f))
    }
-   Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & read BMS data")}
    Text("LIVE TELEMETRY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)
    listOf("Pack voltage","Charge / discharge current","State of charge (SOC)","State of health (SOH)","Remaining / full capacity","Cell voltage min / max","Cell voltage difference","Cell-by-cell voltages","Battery temperature sensors","Charge / discharge MOSFET","Cycle count","Protection & fault alarms").forEach{label->Detail(label,"Not exposed by this device's currently decoded GATT data")}
    Text("The standard Bluetooth Battery Service can provide a percentage only. Pack and cell telemetry requires a supported BMS vendor protocol or documented GATT characteristics. Raw service and characteristic UUIDs below help identify compatible hardware.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -273,7 +315,14 @@ private fun classifyDevice(name:String,services:List<String>,manufacturer:String
  }
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary); SignalHistory(d.history,d.tint)
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
- Detail("Detected category",d.category);Detail("Device address",d.address);Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
+ Detail("Detected category",d.category+" — inferred from the advertised name and Bluetooth service identifiers; not a guaranteed product identity")
+ Detail("Bluetooth pairing status",when(d.bondState){BluetoothDevice.BOND_BONDED->"Paired (bonded) with this phone";BluetoothDevice.BOND_BONDING->"Pairing in progress";else->"Not paired / no bond recorded"})
+ Detail("Bluetooth address",d.address+" — hardware or privacy-randomized radio address reported by Android")
+ Detail("Device alias",d.alias.ifBlank{"Not provided by the device or Android"})
+ Detail("Bluetooth device class",d.deviceClass?.let{bluetoothClassName(it)+" (code 0x"+it.toString(16).uppercase(Locale.ROOT)+")"}?:"Not reported")
+ Detail("Bluetooth major class",d.majorDeviceClass?.let{majorBluetoothClassName(it)+" (code 0x"+it.toString(16).uppercase(Locale.ROOT)+")"}?:"Not reported")
+ Detail("Cached Bluetooth service UUIDs",d.cachedUuids.ifEmpty{listOf("No cached Classic SDP UUIDs available; BLE GATT services are listed after connecting")}.joinToString("\n"))
+ Detail("First detected",date(d.first));Detail("Last detected",date(d.seen));Detail("Signal readings","${d.history.size} captured in this scan");Detail("Advertised transmit power",d.tx?.let{"$it dBm"}?:"Not provided");Detail("Advertised services",d.services.ifEmpty{listOf("No services listed")}.joinToString("\n"));Detail("Manufacturer information",d.manufacturer.ifBlank{"Not provided"});Detail("Service information",d.serviceData.ifBlank{"Not provided"});Detail("Broadcast bytes (first 64)",d.raw.ifBlank{"Not available"})
  Text("PAIRING SECURITY DETAILS",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Bonding support","Unknown until Android attempts pairing and the device responds.")
  Detail("Negotiated security level","Available only after the pairing exchange; this scan cannot determine it.")

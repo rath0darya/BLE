@@ -1,6 +1,8 @@
 package com.anonvox.bleexplorer
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -39,17 +41,29 @@ class NetworkAuditActivity:ComponentActivity() {
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false})}}
 
  private fun subnet():String?=try{
-  val wm=getSystemService(Context.WIFI_SERVICE) as WifiManager
-  @Suppress("DEPRECATION") val ip=wm.connectionInfo.ipAddress
-  if(ip==0)null else {val a=ip and 255;val b=(ip shr 8) and 255;val c=(ip shr 16) and 255;if(a==0||a==127||a>=224)null else a.toString()+"."+b+"."+c}
+  val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+  val network=cm.activeNetwork?:return null
+  val properties=cm.getLinkProperties(network)?:return null
+  val address=properties.linkAddresses.firstOrNull{it.address is java.net.Inet4Address}?:return null
+  val bytes=address.address.address
+  if(bytes.size!=4||bytes[0].toInt()==127||bytes[0].toInt() and 255==169)return null
+  val prefix=address.prefixLength
+  if(prefix<16||prefix>30)return null
+  val ip=java.nio.ByteBuffer.wrap(bytes).int
+  val mask=(-1 shl (32-prefix))
+  val networkAddress=ip and mask
+  val a=(networkAddress ushr 24) and 255
+  val b=(networkAddress ushr 16) and 255
+  val c=(networkAddress ushr 8) and 255
+  if(prefix<24) "$a.$b.$c" else "$a.$b.$c"
  }catch(_:Exception){null}
 
  private fun startAudit(update:(List<LanFinding>,String,Boolean)->Unit){
   if(running)return
   val base=subnet()
-  if(base==null){update(emptyList(),"Connect to Wi-Fi first. This audit scans the connected Wi-Fi /24 subnet.",false);return}
+  if(base==null){update(emptyList(),"Connect to a local network first. This audit checks reachable IP services on the active network.",false);return}
   running=true;evidence.clear();deviceDetails.clear()
-  update(emptyList(),"Scanning local subnet "+base+".0/24. Only local service discovery is performed.",true)
+  update(emptyList(),"Scanning active local network subnet "+base+".0/24. Only local service discovery is performed.",true)
   Thread{
    val results=java.util.Collections.synchronizedList(mutableListOf<LanFinding>())
    val completed=AtomicInteger(0)
@@ -175,11 +189,11 @@ class NetworkAuditActivity:ComponentActivity() {
  var onlyCameras by remember{mutableStateOf(false)}
  val shown=rows.filter{!onlyCameras||it.camera}
  MaterialTheme(colorScheme=darkColorScheme(primary=Color(0xFF5EEAD4),background=Color(0xFF07111F),surface=Color(0xFF111E2E),onSurface=Color(0xFFE5EEF8),onSurfaceVariant=Color(0xFF9FB0C4))){
-  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized local Wi-Fi only",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
+  Scaffold(containerColor=MaterialTheme.colorScheme.background,topBar={TopAppBar(title={Column{Text("Network & CCTV audit",fontWeight=FontWeight.Bold);Text("Authorized active local network",style=MaterialTheme.typography.labelSmall)}},navigationIcon={IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,"Back")}},colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background))}){padding->
    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
     item{Column(Modifier.fillMaxWidth().background(Color(0xFF13283B),RoundedCornerShape(22.dp)).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
      Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.Security,null,tint=Color(0xFF5EEAD4));Spacer(Modifier.width(9.dp));Text("Local network security",fontSize=20.sp,fontWeight=FontWeight.Bold)}
-     Text("Discover IP cameras, DVRs, NVRs and network services. Review protocol exposure without logging in or exploiting devices.",color=Color(0xFFBDCDDF),style=MaterialTheme.typography.bodyMedium)
+     Text("Discover reachable IP cameras, DVRs, NVRs and protocol endpoints on the active local network. Bluetooth scanning remains independent of Wi-Fi. RTSP, ONVIF, SSDP and web services are checked without logging in or exploiting devices.",color=Color(0xFFBDCDDF),style=MaterialTheme.typography.bodyMedium)
      Text("DEVICES  "+rows.size+"     CAMERAS  "+rows.count{it.camera}+"     FINDINGS  "+rows.sumOf{it.risks.size},fontWeight=FontWeight.Bold,color=Color.White)
      Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Security else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start local network audit")}
      Text(status,style=MaterialTheme.typography.labelSmall,color=Color(0xFFB9C9DA))

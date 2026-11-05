@@ -452,6 +452,19 @@ private fun gattRowDescription(row:String):String=when{
   }
  }
  Text("SIGNAL HISTORY",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary);if(d.history.isNotEmpty())SignalHistory(d.history,d.tint)else Text("No signal samples recorded for this paired-only device.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+ Text("DEVICE EVIDENCE & IDENTIFICATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
+ Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+  Text("Evidence summary",fontWeight=FontWeight.SemiBold)
+  Detail("Identity confidence",when{d.category=="Unknown"->"Unclassified · no reliable category evidence";d.services.isNotEmpty()||d.manufacturer.isNotBlank()||d.serviceData.isNotBlank()->"Evidence-backed category estimate · inspect the raw identifiers below";else->"Name/class heuristic only · product model is not verified"})
+  Detail("Name evidence",if(d.name=="Name unavailable")"No name was included in the observed advertisement or available Android cache" else "Name reported by the Bluetooth advertisement or Android device cache · not a verified manufacturer/model")
+  Detail("Transport evidence",d.transport+" · reported by Android Bluetooth APIs")
+  Detail("Advertisement evidence",if(d.raw.isBlank())"No advertisement payload captured" else "Raw advertisement payload captured · ${d.raw.split(" ").size} bytes shown (maximum 64)")
+  Detail("Manufacturer evidence",if(d.manufacturer.isBlank())"No manufacturer-specific data advertised" else "Manufacturer-specific data received · company identity is not decoded unless the payload identifies it")
+  Detail("Service evidence",if(d.services.isEmpty())"No service UUIDs were advertised in the captured packet" else "${d.services.size} service UUID(s) advertised · UUID presence does not prove every service is connectable")
+  Detail("Signal evidence",if(d.history.isEmpty())"No live RSSI samples captured" else "${d.history.size} RSSI sample(s) · latest ${d.rssi} dBm · signal varies with distance, obstacles and antenna")
+  Detail("Product model / firmware / serial", "Not exposed by the captured Bluetooth advertisement. These values require a documented device protocol or an authenticated device information service.")
+  Detail("Network IP / MAC / open ports", "Not available from BLE scanning. Run the separate authorized local-network audit for reachable IP devices.")
+ }
  Text("DEVICE INFORMATION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Detail("Detected category",d.category+" — inferred from the advertised name and Bluetooth service identifiers; not a guaranteed product identity")
  Detail("Bluetooth pairing status",when(d.bondState){BluetoothDevice.BOND_BONDED->"Paired (bonded) with this phone";BluetoothDevice.BOND_BONDING->"Pairing in progress";else->"Not paired / no bond recorded"})

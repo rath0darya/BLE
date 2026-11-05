@@ -30,6 +30,7 @@ import java.net.*
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
+private data class SubnetScope(val cidr:String,val firstHost:Long,val lastHost:Long,val scannedHosts:Int,val totalHosts:Long)
 private data class LanFinding(val ip:String,val ports:List<Int>,val camera:Boolean,val confidence:String,val protocols:List<String>,val risks:List<String>,val details:String)
 
 class NetworkAuditActivity:ComponentActivity() {
@@ -41,46 +42,58 @@ class NetworkAuditActivity:ComponentActivity() {
 
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false},{rows->exportReport(rows)})}}
 
- private fun subnet():String? { return try {
+ private fun subnet():SubnetScope? { return try {
   val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
   val network=cm.activeNetwork?:return null
   val properties=cm.getLinkProperties(network)?:return null
-  val address=properties.linkAddresses.firstOrNull{it.address is java.net.Inet4Address}?:return null
+  val address=properties.linkAddresses.firstOrNull{it.address is Inet4Address}?:return null
   val bytes=address.address.address
-  if(bytes.size!=4||bytes[0].toInt()==127||bytes[0].toInt() and 255==169)return null
+  if(bytes.size!=4)return null
   val prefix=address.prefixLength
   if(prefix<16||prefix>30)return null
-  val ip=java.nio.ByteBuffer.wrap(bytes).int
-  val mask=(-1 shl (32-prefix))
+  val ip=((bytes[0].toLong() and 255L) shl 24) or ((bytes[1].toLong() and 255L) shl 16) or ((bytes[2].toLong() and 255L) shl 8) or (bytes[3].toLong() and 255L)
+  val mask=(0xFFFFFFFFL shl (32-prefix)) and 0xFFFFFFFFL
   val networkAddress=ip and mask
+  val broadcast=networkAddress or (mask xor 0xFFFFFFFFL)
+  val first=networkAddress+1L
+  val last=broadcast-1L
+  if(first>last)return null
+  val total=last-first+1L
+  val cap=4096
+  val scanned=minOf(total,cap.toLong()).toInt()
   val a=(networkAddress ushr 24) and 255
   val b=(networkAddress ushr 16) and 255
   val c=(networkAddress ushr 8) and 255
-  if(prefix<24) "$a.$b.$c" else "$a.$b.$c"
+  val d=networkAddress and 255
+  SubnetScope("$a.$b.$c.$d/$prefix",first,first+scanned-1L,scanned,total)
  } catch(_:Exception){null} }
+
+ private fun ipv4(value:Long):String = ((value ushr 24) and 255).toString()+"."+((value ushr 16) and 255)+"."+((value ushr 8) and 255)+"."+(value and 255)
 
  private fun startAudit(update:(List<LanFinding>,String,Boolean)->Unit){
   if(running)return
-  val base=subnet()
-  if(base==null){update(emptyList(),"Connect to a local network first. This audit checks reachable IP services on the active network.",false);return}
+  val scope=subnet()
+  if(scope==null){update(emptyList(),"Connect to a local IPv4 network with a /16 to /30 subnet first. This audit checks reachable services on that active network.",false);return}
   running=true;evidence.clear();deviceDetails.clear()
-  update(emptyList(),"Scanning active local network subnet "+base+".0/24. Only local service discovery is performed.",true)
+  val scopeNote=if(scope.totalHosts>scope.scannedHosts)" · bounded scan: first "+scope.scannedHosts+" of "+scope.totalHosts+" usable hosts" else ""
+  update(emptyList(),"Scanning "+scope.cidr+" · "+scope.scannedHosts+" usable hosts queued"+scopeNote+". Local service discovery only.",true)
   Thread{
    val results=java.util.Collections.synchronizedList(mutableListOf<LanFinding>())
    val completed=AtomicInteger(0)
    try{
     try{val wm=applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager;lock=wm.createMulticastLock("ble-local-discovery").also{it.setReferenceCounted(false);it.acquire()}}catch(_:Exception){}
     udpProbe()
-    for(host in 1..254){
-     if(!running)break
-     val address=base+"."+host
+    var host=scope.firstHost
+    while(host<=scope.lastHost&&running){
+     val address=ipv4(host)
      pool.submit{
       if(running){inspect(address)?.let{results.add(it)}}
       val count=completed.incrementAndGet()
-      if(count%8==0||count==254){val copy=synchronized(results){results.sortedBy{it.ip}};runOnUiThread{update(copy,"Checked "+count+" / 254 addresses · "+copy.size+" devices found",running)}}
+      if(count%16==0||count==scope.scannedHosts){val copy=synchronized(results){results.sortedBy{it.ip}};runOnUiThread{update(copy,"Checked "+count+" / "+scope.scannedHosts+" hosts · "+copy.size+" devices found"+scopeNote,running)}}
      }
+     host++
     }
-    while(completed.get()<254&&running)Thread.sleep(120)
+    while(completed.get()<scope.scannedHosts&&running)Thread.sleep(120)
     val copy=synchronized(results){results.sortedBy{it.ip}}
     runOnUiThread{update(copy,if(running)"Audit complete · "+copy.size+" devices found" else "Audit stopped · "+copy.size+" devices found",false)}
    }catch(_:InterruptedException){runOnUiThread{update(synchronized(results){results.toList()},"Audit stopped",false)}}
@@ -151,7 +164,7 @@ class NetworkAuditActivity:ComponentActivity() {
  }
 
  private fun inspect(ip:String):LanFinding?{
-  val candidates=listOf(21,23,80,443,554,8554,8000,8080,8443,8899,37777,34567)
+  val candidates=listOf(21,22,23,53,80,443,139,445,554,1883,3389,5000,5001,8000,8080,8443,8554,8883,8899,9000,37777,34567)
   val open=mutableListOf<Int>()
   for(port in candidates){if(!running)return null;try{Socket().use{it.connect(InetSocketAddress(ip,port),240);open.add(port)}}catch(_:Exception){}}
   val signals=evidence[ip].orEmpty()
@@ -163,8 +176,15 @@ class NetworkAuditActivity:ComponentActivity() {
   if(signals.any{it.contains("ONVIF")})protocols.add("ONVIF / WS-Discovery")
   if(signals.any{it.contains("SSDP")})protocols.add("UPnP / SSDP")
   if(21 in open)protocols.add("FTP")
+  if(22 in open)protocols.add("SSH")
   if(23 in open)protocols.add("Telnet")
+  if(53 in open)protocols.add("DNS")
+  if(139 in open||445 in open)protocols.add("SMB / Windows file sharing")
+  if(1883 in open||8883 in open)protocols.add("MQTT messaging")
+  if(3389 in open)protocols.add("Remote Desktop (RDP)")
+  if(5000 in open||5001 in open)protocols.add("NAS / appliance management candidate")
   if(8899 in open)protocols.add("Vendor service · 8899")
+  if(9000 in open)protocols.add("Alternate device service · 9000")
   if(37777 in open)protocols.add("Possible Dahua service · 37777")
   if(34567 in open)protocols.add("Possible DVR/NVR service · 34567")
   val camera=554 in open||8554 in open||37777 in open||34567 in open||signals.any{it.contains("ONVIF")}
@@ -172,6 +192,9 @@ class NetworkAuditActivity:ComponentActivity() {
   if(23 in open)risks.add("HIGH: Telnet is commonly unencrypted. Disable it or restrict management access.")
   if(21 in open)risks.add("REVIEW: FTP may expose credentials/data without encryption. Prefer SFTP/FTPS or disable it.")
   if(80 in open||8080 in open||8000 in open)risks.add("REVIEW: HTTP is reachable. Confirm admin access is protected by HTTPS.")
+  if(139 in open||445 in open)risks.add("REVIEW: SMB/file sharing is reachable. Restrict it to trusted LAN segments and keep file-sharing services patched.")
+  if(1883 in open)risks.add("REVIEW: MQTT plaintext listener is reachable. Authentication and topic permissions were not tested.")
+  if(3389 in open)risks.add("REVIEW: Remote Desktop is reachable. Restrict access and require strong authentication.")
   if(554 in open||8554 in open)risks.add("REVIEW: RTSP is reachable. Verify stream authentication and restrict access to trusted clients.")
   if(camera&&443 !in open&&8443 !in open)risks.add("REVIEW: no common HTTPS port detected; this does not prove encryption is absent.")
   if(risks.isEmpty()&&camera)risks.add("No obvious exposure found by these limited checks. Firmware and authentication remain unverified.")
@@ -195,11 +218,11 @@ class NetworkAuditActivity:ComponentActivity() {
     appendLine();appendLine("DEVICE ${index+1}: ${f.ip}")
     appendLine("Camera candidate: "+f.camera);appendLine("Confidence: "+f.confidence)
     appendLine("Open TCP ports: "+f.ports.joinToString().ifBlank{"None"})
-    appendLine("Protocols: "+f.protocols.joinToString().ifBlank{"No signature"})
+    appendLine("Protocols / service hints: "+f.protocols.joinToString().ifBlank{"No signature"})
     appendLine("Device details: "+f.details.ifBlank{"Not exposed"})
     appendLine("Security review:");f.risks.forEach{appendLine("- "+it)}
    }
-   appendLine();appendLine("Limitations: an open port is not a confirmed vulnerability. A missing HTTPS port does not prove encryption is absent. No authentication, firmware CVE or internet exposure tests were performed.")
+   appendLine();appendLine("Limitations: an open port is not a confirmed vulnerability. A missing HTTPS port does not prove encryption is absent. No authentication, firmware CVE or internet exposure tests were performed. SMB, MQTT and RDP findings indicate reachable listeners only.")
   }
   ReportExporter.shareAll(this,"BLE Explorer local network and CCTV audit","ble-explorer-network-audit",text,json)
  }

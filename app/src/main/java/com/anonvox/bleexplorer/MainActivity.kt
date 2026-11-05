@@ -360,6 +360,7 @@ private fun gattRowDescription(row:String):String=when{
  var filter by remember{mutableStateOf("All")}
  var selected by remember{mutableStateOf<Device?>(null)}
  var settings by remember{mutableStateOf(false)}
+ var reportChoices by remember{mutableStateOf(false)}
  val categories=listOf("All","Audio","Phones","Wearables","CCTV Cameras","TVs","Remotes","EV Vehicles","Smart Home","Unknown")
  LaunchedEffect(devices,pairedDevices){selected=selected?.let{chosen->(devices+pairedDevices).firstOrNull{it.address==chosen.address}?:chosen}}
  val shown=devices.filter{(it.name.contains(query,true)||it.address.contains(query,true))&&(filter=="All"||it.category==filter)}
@@ -398,7 +399,7 @@ private fun gattRowDescription(row:String):String=when{
     ToolTile("P2 · Multi-protocol Discovery","BLE + Bluetooth Classic scan together; inspect nearby Wi-Fi access points and local IP services",Icons.Default.Hub,{onScan()})
     FeatureNote("P3 · Evidence-based Identification","Classification uses observed names, Bluetooth classes, service UUIDs and manufacturer payloads. Estimates and unavailable information are labelled.")
     ToolTile("P4 · Network & CCTV Intelligence","Run authorized subnet checks for ONVIF, SSDP/UPnP, RTSP and reachable management ports",Icons.Default.Security,onNetworkAudit)
-    ToolTile("P5 · Evidence Reports","Export Bluetooth, Wi-Fi or network-audit evidence as TXT, JSON and PDF",Icons.Default.Description,{if(devices.isNotEmpty())onShare() else onScan()})
+    ToolTile("P5 · Evidence Reports","Choose Bluetooth, Wi-Fi or network findings to export as TXT, JSON and PDF",Icons.Default.Description,{reportChoices=true})
     ToolTile("Nearby Wi-Fi access points","Scan broadcast access points; this does not enumerate clients behind a router",Icons.Default.Wifi,onNearbyWifi)
    }
   }
@@ -436,6 +437,12 @@ private fun gattRowDescription(row:String):String=when{
  }}
  selected?.let{device->DeviceSheet(device,{onPair(device)},{onConnectBms(device)},{onDisconnectBms(device)},{onOpenBluetoothSettings()},bms){selected=null}}
  if(settings)AlertDialog(onDismissRequest={settings=false},title={Text("Discovery settings")},text={Text("Bluetooth discovery requires Nearby devices permission. Android versions and device manufacturers may impose additional restrictions. Scans start only when requested and stop automatically after 30 seconds.")},confirmButton={TextButton(onClick={settings=false}){Text("Done")}})
+ if(reportChoices)AlertDialog(onDismissRequest={reportChoices=false},title={Text("Export evidence report")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+  Text("Choose the evidence source. Each tool exports its own captured data in TXT, JSON and PDF formats.")
+  TextButton(onClick={if(devices.isNotEmpty()){{reportChoices=false;onShare()}}else{{reportChoices=false;onScan()}}},modifier=Modifier.fillMaxWidth()){Text(if(devices.isNotEmpty())"Bluetooth discovery report" else "Start Bluetooth discovery first")}
+  TextButton(onClick={reportChoices=false;onNearbyWifi()},modifier=Modifier.fillMaxWidth()){Text("Nearby Wi-Fi access-point report")}
+  TextButton(onClick={reportChoices=false;onNetworkAudit()},modifier=Modifier.fillMaxWidth()){Text("Local network & CCTV audit report")}
+ },confirmButton={TextButton(onClick={reportChoices=false}){Text("Close")}}})
 }
 @Composable private fun FeatureNote(title:String,subtitle:String){
  Surface(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(19.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=2.dp){Column(Modifier.padding(15.dp),verticalArrangement=Arrangement.spacedBy(5.dp)){Text(title,fontWeight=FontWeight.SemiBold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}

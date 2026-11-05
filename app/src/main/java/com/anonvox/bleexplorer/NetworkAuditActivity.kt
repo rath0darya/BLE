@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -251,13 +253,13 @@ class NetworkAuditActivity:ComponentActivity() {
    LazyColumn(Modifier.fillMaxSize().padding(padding),contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
     item{Card(shape=RoundedCornerShape(20.dp)){Column(Modifier.fillMaxWidth().padding(15.dp),verticalArrangement=Arrangement.spacedBy(11.dp)){
      Row(verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Local network",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.Bold);Text("${rows.size} devices · ${rows.count{it.camera}} CCTV candidates · ${rows.sumOf{it.risks.size}} reviews",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};if(active)CircularProgressIndicator(Modifier.size(24.dp),strokeWidth=2.dp)}
-     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Stop else Icons.Default.Radar,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start network audit")}
+     Button(onClick={if(active)onStop()else onScan{list,message,busy->rows=list;status=message;active=busy}},modifier=Modifier.fillMaxWidth()){Icon(if(active)Icons.Default.Stop else Icons.Default.Refresh,null);Spacer(Modifier.width(8.dp));Text(if(active)"Stop audit" else "Start network audit")}
      Text(status,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
     }}}
     item{Row(verticalAlignment=Alignment.CenterVertically){Text("CCTV candidates only",modifier=Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium);Switch(checked=onlyCameras,onCheckedChange={onlyCameras=it})}}
     if(shown.isEmpty())item{EmptyAuditState(if(rows.isEmpty())"No scan results" else "No CCTV candidates",if(rows.isEmpty())"Start an audit on your own or administered Wi-Fi network." else "Turn off the CCTV filter to see all discovered devices.")}
     items(shown,key={it.ip}){f->Card(shape=RoundedCornerShape(16.dp),onClick={expandedIp=if(expandedIp==f.ip)null else f.ip}){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
-     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Devices,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(if(expandedIp==f.ip)"Less" else "Details",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)}
+     Row(verticalAlignment=Alignment.CenterVertically){Icon(if(f.camera)Icons.Default.CameraAlt else Icons.Default.Security,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(f.ip,fontWeight=FontWeight.Bold);Text(if(f.camera)"Possible CCTV / IP camera" else "Network device",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(if(expandedIp==f.ip)"Less" else "Details",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.primary)}
      Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){AssistChip(onClick={},label={Text(f.confidence.substringBefore(" · "))});AssistChip(onClick={},label={Text("${f.ports.size} ports")})}
      if(expandedIp==f.ip){
       HorizontalDivider()

@@ -130,7 +130,7 @@ class NearbyWifiActivity:ComponentActivity(){
      if(rows.isEmpty())item{EmptyToolState("No access points yet","Enable Wi-Fi and Location, then scan.")}
      items(rows,key={it.bssid}){r->Card(shape=RoundedCornerShape(16.dp),onClick={expanded=if(expanded==r.bssid)null else r.bssid}){Column(Modifier.fillMaxWidth().padding(14.dp),verticalArrangement=Arrangement.spacedBy(7.dp)){
       Row(verticalAlignment=Alignment.CenterVertically){Icon(if(r.cameraHint)Icons.Default.CameraAlt else Icons.Default.Wifi,null,tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(9.dp));Column(Modifier.weight(1f)){Text(r.ssid,fontWeight=FontWeight.SemiBold,maxLines=1);Text(r.bssid,style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text("${r.rssi} dBm",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelLarge)}
-      Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){AssistChip(onClick={},label={Text(r.band)});AssistChip(onClick={},label={Text(r.securityAssessment.substringBefore(" · "))});if(r.cameraHint)AssistChip(onClick={},label={Text("Camera hint")})}
+      Row(horizontalArrangement=Arrangement.spacedBy(6.dp)){InfoBadge(r.band);InfoBadge(r.securityAssessment.substringBefore(" · "));if(r.cameraHint)InfoBadge("Camera hint")}
       if(expanded==r.bssid){
        HorizontalDivider()
        Text("Frequency: ${r.frequency} MHz · Channel: ${r.channel?.toString()?: "Unavailable"}",style=MaterialTheme.typography.bodySmall)
@@ -150,3 +150,5 @@ class NearbyWifiActivity:ComponentActivity(){
 @Composable private fun EmptyToolState(title:String,subtitle:String){
  Card(shape=RoundedCornerShape(18.dp)){Column(Modifier.fillMaxWidth().padding(22.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(7.dp)){Icon(Icons.Default.SearchOff,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.size(34.dp));Text(title,fontWeight=FontWeight.Bold);Text(subtitle,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,textAlign=androidx.compose.ui.text.style.TextAlign.Center)}}
 }
+
+@Composable private fun InfoBadge(label:String){Surface(shape=RoundedCornerShape(50),color=MaterialTheme.colorScheme.secondaryContainer){Text(label,Modifier.padding(horizontal=10.dp,vertical=5.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSecondaryContainer)}}

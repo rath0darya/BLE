@@ -1,10 +1,11 @@
 name: Android APK
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: ble-android-main
   cancel-in-progress: false
@@ -21,6 +22,7 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Prepare persistent release signing key
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -28,33 +30,57 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::Persistent signing secrets are missing. Refusing to publish an APK signed with a temporary debug key."
-            exit 1
-          fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-key.jks"
-          test -s "$GITHUB_WORKSPACE/release-key.jks"
-          chmod 600 "$GITHUB_WORKSPACE/release-key.jks"
-          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-key.jks" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
           echo "VERSION_NAME=1.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-      - name: Build APKs
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/release-key.jks"
+            test -s "$GITHUB_WORKSPACE/release-key.jks"
+            chmod 600 "$GITHUB_WORKSPACE/release-key.jks"
+            echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/release-key.jks" >> "$GITHUB_ENV"
+            echo "release_ready=true" >> "$GITHUB_OUTPUT"
+            echo "Persistent release key found."
+          else
+            echo "release_ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Persistent signing secrets are missing. Building a debug validation APK only; no installable release will be published."
+          fi
+      - name: Build signed release and debug APKs
+        if: steps.signing.outputs.release_ready == 'true'
         run: gradle --no-daemon --stacktrace assembleDebug assembleRelease
+      - name: Build debug validation APK only
+        if: steps.signing.outputs.release_ready != 'true'
+        run: gradle --no-daemon --stacktrace assembleDebug
       - name: Prepare downloadable APK
         run: |
           mkdir -p downloads
-          cp app/build/outputs/apk/release/app-release.apk downloads/BLE-Explorer.apk
+          if [ "${{ steps.signing.outputs.release_ready }}" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk downloads/BLE-Explorer.apk
+          else
+            cp app/build/outputs/apk/debug/app-debug.apk downloads/BLE-Explorer-DEBUG-VALIDATION-ONLY.apk
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: BLE-Explorer-release
-          path: downloads/BLE-Explorer.apk
+          name: BLE-Explorer-${{ steps.signing.outputs.release_ready == 'true' && 'release' || 'debug-validation-only' }}
+          path: downloads/*.apk
           if-no-files-found: error
           retention-days: 30
-      - name: Publish versioned GitHub Release
-        if: success() && github.ref == 'refs/heads/main'
+      - name: Publish installable versioned GitHub Release
+        if: success() && steps.signing.outputs.release_ready == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.1.${{ github.run_number }}
           name: BLE Explorer v1.1.${{ github.run_number }}
           generate_release_notes: true
           files: downloads/BLE-Explorer.apk
+      - name: Clear previous workflow history, keep this run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GH_REPO/actions/runs?per_page=100" --jq '.workflow_runs[].id' | while read -r run_id; do
+            if [ "$run_id" != "$CURRENT_RUN_ID" ]; then
+              gh api --silent --method DELETE "repos/$GH_REPO/actions/runs/$run_id" || echo "Could not delete run $run_id"
+            fi
+          done

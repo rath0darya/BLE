@@ -191,10 +191,11 @@ class MainActivity:ComponentActivity() {
    val snapshots=adapter.bondedDevices.mapNotNull{remote->
     try{
      val address=remote.address?:return@mapNotNull null
-     val name=remote.alias?.takeIf{it.isNotBlank()}?:remote.name?.takeIf{it.isNotBlank()}?:"Paired Bluetooth device"
+     val alias=try{if(Build.VERSION.SDK_INT>=30)remote.alias.orEmpty() else ""}catch(_:Exception){""}
+     val name=alias.takeIf{it.isNotBlank()}?:remote.name?.takeIf{it.isNotBlank()}?:"Paired Bluetooth device"
      val btClass=remote.bluetoothClass
      val transport=when(remote.type){BluetoothDevice.DEVICE_TYPE_LE->"Bluetooth Low Energy (LE)";BluetoothDevice.DEVICE_TYPE_CLASSIC->"Bluetooth Classic (BR/EDR)";BluetoothDevice.DEVICE_TYPE_DUAL->"Dual-mode (LE + Classic BR/EDR)";else->"Unknown Bluetooth transport"}
-     Device(address,name,classifyDevice(name,emptyList(),"",""),transport,-127,System.currentTimeMillis(),System.currentTimeMillis(),null,emptyList(),"","","",emptyList(),remote.bondState,btClass?.deviceClass,btClass?.majorDeviceClass,remote.alias.orEmpty(),remote.uuids?.map{it.uuid.toString()}.orEmpty())
+     Device(address,name,classifyDevice(name,emptyList(),"",""),transport,-127,System.currentTimeMillis(),System.currentTimeMillis(),null,emptyList(),"","","",emptyList(),remote.bondState,btClass?.deviceClass,btClass?.majorDeviceClass,alias,remote.uuids?.map{it.uuid.toString()}.orEmpty())
     }catch(_:SecurityException){null}catch(_:Exception){null}
    }.sortedBy{it.name.lowercase(Locale.ROOT)}
    pairedUpdate?.invoke(snapshots)
@@ -367,7 +368,7 @@ private fun gattRowDescription(row:String):String=when{
  Text("GATT DEVICE INSPECTION",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)
  Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha=.45f)).padding(13.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
   Detail("Connection and discovery status",bms.status+" — GATT is the Bluetooth Low Energy data interface used by many sensors and smart devices")
-  Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & inspect device services")}
+  if(d.transport.contains("Low Energy")||d.transport.contains("Dual-mode"))Button(onClick=onConnectBms,modifier=Modifier.fillMaxWidth()){Icon(Icons.Default.BluetoothConnected,null);Spacer(Modifier.width(7.dp));Text("Connect & inspect device services")}else Text("GATT inspection is not available for a Classic-only or unidentified transport. Classic Bluetooth uses different profiles (such as audio, HID or serial) and does not expose BLE GATT services.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   if(bms.characteristics.isNotEmpty()){
    Text("Discovered GATT services and characteristics",fontWeight=FontWeight.Bold,style=MaterialTheme.typography.labelSmall)
    bms.characteristics.forEach{row->Detail(gattRowTitle(row),gattRowDescription(row))}

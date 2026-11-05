@@ -82,8 +82,9 @@ class NearbyWifiActivity:ComponentActivity(){
   }catch(_:SecurityException){}catch(_:Exception){}
  }
  @Volatile private var latest:List<WifiSignal> = emptyList()
- override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==811&&grantResults.isNotEmpty()&&grantResults[0]==PackageManager.PERMISSION_GRANTED)scan()}
+ override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<String>,grantResults:IntArray){super.onRequestPermissionsResult(requestCode,permissions,grantResults);if(requestCode==811&&grantResults.isNotEmpty()&&grantResults[0]==PackageManager.PERMISSION_GRANTED)scan()}
  override fun onDestroy(){handler.removeCallbacksAndMessages(null);if(receiverRegistered)try{unregisterReceiver(receiver)}catch(_:Exception){};super.onDestroy()}
+ @OptIn(ExperimentalMaterial3Api::class)
  @Composable private fun NearbyWifiScreen(onBack:()->Unit,onScan:()->Unit,onStatus:(()->Unit)->Unit){
   var rows by remember{mutableStateOf(emptyList<WifiSignal>())}
   var status by remember{mutableStateOf("Tap scan to inspect Wi-Fi access points broadcasting nearby.")}

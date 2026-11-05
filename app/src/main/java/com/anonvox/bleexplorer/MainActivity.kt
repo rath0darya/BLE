@@ -159,7 +159,7 @@ class MainActivity:ComponentActivity() {
  }
  private fun readNextGattCharacteristic(gatt:BluetoothGatt){
   if(gattReadQueue.isEmpty()){
-   runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · GATT inspection complete",characteristics=gattRows.toList()))}
+   runOnUiThread{bmsUpdate?.invoke(BmsSnapshot("Connected · GATT inspection complete",characteristics=gattRows.toList(),deviceAddress=bmsDeviceAddress,connected=bmsConnected))}
    return
   }
   val next=gattReadQueue.removeFirst()

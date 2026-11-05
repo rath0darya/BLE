@@ -40,7 +40,7 @@ class NetworkAuditActivity:ComponentActivity() {
 
  override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{NetworkAuditScreen({finish()},{callback->startAudit(callback)},{running=false})}}
 
- private fun subnet():String?=try{
+ private fun subnet():String? { return try {
   val cm=getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
   val network=cm.activeNetwork?:return null
   val properties=cm.getLinkProperties(network)?:return null
@@ -56,7 +56,7 @@ class NetworkAuditActivity:ComponentActivity() {
   val b=(networkAddress ushr 16) and 255
   val c=(networkAddress ushr 8) and 255
   if(prefix<24) "$a.$b.$c" else "$a.$b.$c"
- }catch(_:Exception){null}
+ } catch(_:Exception){null} }
 
  private fun startAudit(update:(List<LanFinding>,String,Boolean)->Unit){
   if(running)return
